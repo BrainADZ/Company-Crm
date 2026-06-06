@@ -1,0 +1,679 @@
+const express = require('express');
+const multer = require('multer');
+const XLSX = require('xlsx');
+const ClientDataset = require('../models/ClientDataset');
+const User = require('../models/User');
+const authMiddleware = require('../middleware/authMiddleware');
+const { createNotification } = require('../utils/notifications');
+
+const router = express.Router();
+const CLIENT_WORK_COLUMNS = ['Status', 'Remark', 'Employee'];
+const CLIENT_STATUS_OPTIONS = [
+  'Pending',
+  'Contacted',
+  'Follow Up',
+  'Interested',
+  'Not Interested',
+  'Converted',
+  'Not Reachable',
+];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => {
+    const allowedExtensions = /\.(xlsx|xls)$/i;
+    const allowedMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/octet-stream',
+    ];
+
+    if (allowedExtensions.test(file.originalname) || allowedMimeTypes.includes(file.mimetype)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('Only Excel files are allowed'));
+  },
+});
+
+const requireAdmin = (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Access denied: Admins only' });
+  }
+  return next();
+};
+
+const normalizeCell = (cell) => {
+  if (cell === null || cell === undefined) return '';
+  if (cell instanceof Date) return cell.toISOString();
+  return String(cell).trim();
+};
+
+const normalizeColumnName = (column) => normalizeCell(column).toLowerCase();
+
+const addWorkColumnsAfterWebsite = (columns, rows) => {
+  const normalizedColumns = columns.map((column, index) => normalizeCell(column) || `Column ${index + 1}`);
+  const existingColumnNames = new Set(normalizedColumns.map(normalizeColumnName));
+  const columnsToAdd = CLIENT_WORK_COLUMNS.filter((column) => !existingColumnNames.has(column.toLowerCase()));
+
+  const normalizedRows = rows.map((row) => normalizedColumns.map((column, index) => normalizeCell(row[index])));
+
+  if (columnsToAdd.length === 0) {
+    return { columns: normalizedColumns, rows: normalizedRows };
+  }
+
+  const websiteIndex = normalizedColumns.findIndex((column) => normalizeColumnName(column) === 'website');
+  const insertIndex = websiteIndex === -1 ? normalizedColumns.length : websiteIndex + 1;
+  const finalColumns = [
+    ...normalizedColumns.slice(0, insertIndex),
+    ...columnsToAdd,
+    ...normalizedColumns.slice(insertIndex),
+  ];
+  const finalRows = normalizedRows.map((row) => [
+    ...row.slice(0, insertIndex),
+    ...columnsToAdd.map(() => ''),
+    ...row.slice(insertIndex),
+  ]);
+
+  return { columns: finalColumns, rows: finalRows };
+};
+
+const getColumnIndex = (columns, columnName) => (
+  columns.findIndex((column) => normalizeColumnName(column) === columnName.toLowerCase())
+);
+
+const getCellValue = (columns, row, columnNames) => {
+  const normalizedNames = columnNames.map((columnName) => columnName.toLowerCase());
+  const index = columns.findIndex((column) => normalizedNames.includes(normalizeColumnName(column)));
+
+  return index === -1 ? '' : normalizeCell(row[index]);
+};
+
+const getRowClientLabel = (columns, row, rowIndex) => (
+  getCellValue(columns, row, ['Client Name', 'Company Name', 'Website'])
+  || `Row ${rowIndex + 1}`
+);
+
+const getUserLabel = async (userId) => {
+  const user = await User.findById(userId).select('name email');
+  return user?.name || user?.email || 'User';
+};
+
+const prepareDatasetResponse = (dataset, includeLogs = false) => {
+  const datasetObject = dataset.toObject();
+  const normalizedData = addWorkColumnsAfterWebsite(datasetObject.columns || [], datasetObject.rows || []);
+  const rowLogs = includeLogs ? datasetObject.rowLogs || [] : undefined;
+  const rowAssignments = includeLogs ? datasetObject.rowAssignments || [] : undefined;
+
+  return {
+    ...datasetObject,
+    columns: normalizedData.columns,
+    rows: normalizedData.rows,
+    rowLogs,
+    rowAssignments,
+  };
+};
+
+const normalizeRowLogs = (rowLogs = []) => rowLogs.map((rowLog) => ({
+  rowIndex: Number(rowLog.rowIndex),
+  entries: [...(rowLog.entries || [])],
+}));
+
+const findRowLog = (rowLogs, rowIndex) => (
+  rowLogs.find((rowLog) => Number(rowLog.rowIndex) === Number(rowIndex))
+);
+
+const upsertRowLogEntry = (rowLogs = [], rowIndex, entry) => {
+  const normalizedRowLogs = normalizeRowLogs(rowLogs);
+  const existingRowLog = findRowLog(normalizedRowLogs, rowIndex);
+
+  if (existingRowLog) {
+    existingRowLog.entries = [...(existingRowLog.entries || []), entry];
+    return {
+      rowLogs: normalizedRowLogs,
+      rowLog: existingRowLog,
+    };
+  }
+
+  const rowLog = {
+    rowIndex,
+    entries: [entry],
+  };
+
+  return {
+    rowLogs: [...normalizedRowLogs, rowLog],
+    rowLog,
+  };
+};
+
+const normalizeRowIndexes = (rowIndexes) => {
+  if (!Array.isArray(rowIndexes)) return [];
+
+  return [...new Set(rowIndexes
+    .map((rowIndex) => Number(rowIndex))
+    .filter((rowIndex) => Number.isInteger(rowIndex) && rowIndex >= 0))];
+};
+
+const normalizeAssignments = (rowAssignments = []) => rowAssignments.map((assignment) => ({
+  rowIndex: Number(assignment.rowIndex),
+  employee: assignment.employee,
+  employeeName: assignment.employeeName || '',
+  assignedBy: assignment.assignedBy,
+  assignedAt: assignment.assignedAt || new Date(),
+}));
+
+const getAssignmentByRow = (rowAssignments = []) => {
+  const assignmentMap = new Map();
+  normalizeAssignments(rowAssignments).forEach((assignment) => {
+    assignmentMap.set(Number(assignment.rowIndex), assignment);
+  });
+  return assignmentMap;
+};
+
+const getEmployeeDatasetResponse = (dataset, employeeId) => {
+  const datasetObject = dataset.toObject();
+  const normalizedData = addWorkColumnsAfterWebsite(datasetObject.columns || [], datasetObject.rows || []);
+  const employeeAssignments = normalizeAssignments(datasetObject.rowAssignments || [])
+    .filter((assignment) => String(assignment.employee) === String(employeeId));
+  const assignedRowIndexes = employeeAssignments.map((assignment) => Number(assignment.rowIndex));
+  const assignedRows = assignedRowIndexes.map((rowIndex) => normalizedData.rows[rowIndex]).filter(Boolean);
+
+  return {
+    _id: datasetObject._id,
+    name: datasetObject.name,
+    year: datasetObject.year,
+    originalFileName: datasetObject.originalFileName,
+    columns: normalizedData.columns,
+    rows: assignedRows,
+    originalRowIndexes: assignedRowIndexes,
+    rowCount: assignedRows.length,
+    createdAt: datasetObject.createdAt,
+    updatedAt: datasetObject.updatedAt,
+  };
+};
+
+router.get('/', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const datasets = await ClientDataset.find()
+      .select('-rows -rowLogs -rowAssignments')
+      .sort({ createdAt: -1 });
+
+    res.json(datasets);
+  } catch (error) {
+    console.error('Error fetching client datasets:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/assigned/me', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'employee') {
+      return res.status(403).json({ message: 'Access denied: Employees only' });
+    }
+
+    const datasets = await ClientDataset.find({
+      'rowAssignments.employee': req.user.id,
+    }).select('-rowLogs').sort({ updatedAt: -1 });
+
+    const assignedDatasets = datasets.map((dataset) => {
+      const response = getEmployeeDatasetResponse(dataset, req.user.id);
+
+      return {
+        _id: response._id,
+        name: response.name,
+        year: response.year,
+        originalFileName: response.originalFileName,
+        rowCount: response.rowCount,
+        createdAt: response.createdAt,
+        updatedAt: response.updatedAt,
+      };
+    });
+
+    return res.json(assignedDatasets);
+  } catch (error) {
+    console.error('Error fetching employee assigned datasets:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/:id', authMiddleware, async (req, res) => {
+  try {
+    const dataset = await ClientDataset.findById(req.params.id);
+
+    if (!dataset) {
+      return res.status(404).json({ message: 'Client dataset not found' });
+    }
+
+    if (req.user.role === 'employee') {
+      const assignedDataset = getEmployeeDatasetResponse(dataset, req.user.id);
+
+      if (assignedDataset.rows.length === 0) {
+        return res.status(403).json({ message: 'No assigned data found in this dataset' });
+      }
+
+      return res.json(assignedDataset);
+    }
+
+    return res.json(prepareDatasetResponse(dataset, req.user.role === 'admin'));
+  } catch (error) {
+    console.error('Error fetching client dataset:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.patch('/:id/rows/:rowIndex/status', authMiddleware, async (req, res) => {
+  try {
+    const rowIndex = Number(req.params.rowIndex);
+    const { status = '', remark = '' } = req.body;
+
+    if (!Number.isInteger(rowIndex) || rowIndex < 0) {
+      return res.status(400).json({ message: 'Invalid row index' });
+    }
+
+    if (status && !CLIENT_STATUS_OPTIONS.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status selected' });
+    }
+
+    const dataset = await ClientDataset.findById(req.params.id);
+
+    if (!dataset) {
+      return res.status(404).json({ message: 'Client dataset not found' });
+    }
+
+    const { columns, rows } = addWorkColumnsAfterWebsite(dataset.columns || [], dataset.rows || []);
+
+    if (rowIndex >= rows.length) {
+      return res.status(404).json({ message: 'Client row not found' });
+    }
+
+    if (req.user.role === 'employee') {
+      const assignmentMap = getAssignmentByRow(dataset.rowAssignments || []);
+      const rowAssignment = assignmentMap.get(rowIndex);
+
+      if (!rowAssignment || String(rowAssignment.employee) !== String(req.user.id)) {
+        return res.status(403).json({ message: 'You can update only your assigned data' });
+      }
+    }
+
+    const statusIndex = getColumnIndex(columns, 'Status');
+    const remarkIndex = getColumnIndex(columns, 'Remark');
+    const updatedRow = [...rows[rowIndex]];
+    const previousStatus = normalizeCell(updatedRow[statusIndex]);
+    const previousRemark = normalizeCell(updatedRow[remarkIndex]);
+    const currentStatus = normalizeCell(status);
+    const currentRemark = normalizeCell(remark);
+    const statusChanged = previousStatus !== currentStatus;
+    const remarkChanged = previousRemark !== currentRemark;
+
+    updatedRow[statusIndex] = currentStatus;
+    updatedRow[remarkIndex] = currentRemark;
+    rows[rowIndex] = updatedRow;
+
+    dataset.columns = columns;
+    dataset.rows = rows;
+
+    let updatedRowLog;
+    if (statusChanged || remarkChanged) {
+      const nextLogEntry = {
+        changedBy: req.user.id,
+        changedByRole: req.user.role,
+        statusChanged,
+        remarkChanged,
+        previousStatus,
+        currentStatus,
+        previousRemark,
+        currentRemark,
+        changedAt: new Date(),
+      };
+      const nextLogState = upsertRowLogEntry(dataset.rowLogs || [], rowIndex, nextLogEntry);
+
+      updatedRowLog = nextLogState.rowLog;
+      dataset.rowLogs = nextLogState.rowLogs;
+      dataset.markModified('rowLogs');
+    } else {
+      updatedRowLog = findRowLog(dataset.rowLogs || [], rowIndex);
+    }
+
+    dataset.markModified('columns');
+    dataset.markModified('rows');
+    await dataset.save();
+
+    if ((statusChanged || remarkChanged) && req.user.role === 'employee') {
+      const actorName = await getUserLabel(req.user.id);
+      const clientLabel = getRowClientLabel(columns, updatedRow, rowIndex);
+      const changes = [
+        statusChanged ? `status: ${previousStatus || 'Empty'} to ${currentStatus || 'Empty'}` : '',
+        remarkChanged ? 'remark updated' : '',
+      ].filter(Boolean).join(', ');
+
+      await createNotification({
+        recipientRole: 'admin',
+        actorUser: req.user.id,
+        actorName,
+        actorRole: req.user.role,
+        type: 'client_row_update',
+        title: `${actorName} updated client data`,
+        message: `${clientLabel} in ${dataset.name}: ${changes}`,
+        link: `/dashboard/clients/${dataset._id}`,
+        meta: {
+          datasetId: dataset._id,
+          rowIndex,
+          statusChanged,
+          remarkChanged,
+          previousStatus,
+          currentStatus,
+          previousRemark,
+          currentRemark,
+        },
+      });
+    }
+
+    const responsePayload = {
+      message: 'Client status updated successfully',
+      columns,
+      rowIndex,
+      row: updatedRow,
+    };
+
+    if (req.user.role === 'admin') {
+      responsePayload.rowLog = updatedRowLog || { rowIndex, entries: [] };
+    }
+
+    return res.json(responsePayload);
+  } catch (error) {
+    console.error('Error updating client status:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.patch('/:id/assign', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const rowIndexes = normalizeRowIndexes(req.body.rowIndexes);
+    const employeeId = normalizeCell(req.body.employeeId);
+
+    if (rowIndexes.length === 0) {
+      return res.status(400).json({ message: 'Select at least one row to assign' });
+    }
+
+    const employee = await User.findOne({ _id: employeeId, role: 'employee' }).select('name email');
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    const dataset = await ClientDataset.findById(req.params.id);
+    if (!dataset) {
+      return res.status(404).json({ message: 'Client dataset not found' });
+    }
+
+    const { columns, rows } = addWorkColumnsAfterWebsite(dataset.columns || [], dataset.rows || []);
+    const employeeIndex = getColumnIndex(columns, 'Employee');
+    const invalidRows = rowIndexes.filter((rowIndex) => rowIndex >= rows.length);
+
+    if (invalidRows.length) {
+      return res.status(400).json({ message: `Invalid row numbers: ${invalidRows.map((rowIndex) => rowIndex + 1).join(', ')}` });
+    }
+
+    const assignmentMap = getAssignmentByRow(dataset.rowAssignments || []);
+    const lockedRows = rowIndexes.filter((rowIndex) => {
+      const assignment = assignmentMap.get(rowIndex);
+      return assignment && String(assignment.employee) !== String(employee._id);
+    });
+
+    if (lockedRows.length) {
+      return res.status(409).json({
+        message: `Rows already assigned: ${lockedRows.map((rowIndex) => rowIndex + 1).join(', ')}. Unassign first.`,
+        lockedRows,
+      });
+    }
+
+    const assignedAt = new Date();
+    const employeeLabel = employee.name || employee.email || 'Employee';
+    const nextAssignments = normalizeAssignments(dataset.rowAssignments || [])
+      .filter((assignment) => !rowIndexes.includes(Number(assignment.rowIndex)));
+
+    rowIndexes.forEach((rowIndex) => {
+      rows[rowIndex][employeeIndex] = employeeLabel;
+      nextAssignments.push({
+        rowIndex,
+        employee: employee._id,
+        employeeName: employeeLabel,
+        assignedBy: req.user.id,
+        assignedAt,
+      });
+    });
+
+    dataset.columns = columns;
+    dataset.rows = rows;
+    dataset.rowAssignments = nextAssignments;
+    dataset.markModified('columns');
+    dataset.markModified('rows');
+    dataset.markModified('rowAssignments');
+    await dataset.save();
+
+    await createNotification({
+      recipientRole: 'employee',
+      recipientUser: employee._id,
+      actorUser: req.user.id,
+      actorName: await getUserLabel(req.user.id),
+      actorRole: req.user.role,
+      type: 'client_assignment',
+      title: 'New client data assigned',
+      message: `${rowIndexes.length} row${rowIndexes.length > 1 ? 's' : ''} assigned to you in ${dataset.name}.`,
+      link: `/employee-dashboard/datasets/${dataset._id}`,
+      meta: {
+        datasetId: dataset._id,
+        rowIndexes,
+        employeeId: employee._id,
+      },
+    });
+
+    return res.json({
+      message: `${rowIndexes.length} rows assigned to ${employeeLabel}`,
+      columns,
+      rows,
+      rowAssignments: nextAssignments,
+    });
+  } catch (error) {
+    console.error('Error assigning client dataset rows:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.patch('/:id/unassign', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const rowIndexes = normalizeRowIndexes(req.body.rowIndexes);
+
+    if (rowIndexes.length === 0) {
+      return res.status(400).json({ message: 'Select at least one row to unassign' });
+    }
+
+    const dataset = await ClientDataset.findById(req.params.id);
+    if (!dataset) {
+      return res.status(404).json({ message: 'Client dataset not found' });
+    }
+
+    const { columns, rows } = addWorkColumnsAfterWebsite(dataset.columns || [], dataset.rows || []);
+    const employeeIndex = getColumnIndex(columns, 'Employee');
+    const invalidRows = rowIndexes.filter((rowIndex) => rowIndex >= rows.length);
+
+    if (invalidRows.length) {
+      return res.status(400).json({ message: `Invalid row numbers: ${invalidRows.map((rowIndex) => rowIndex + 1).join(', ')}` });
+    }
+
+    const removedAssignments = normalizeAssignments(dataset.rowAssignments || [])
+      .filter((assignment) => rowIndexes.includes(Number(assignment.rowIndex)));
+
+    rowIndexes.forEach((rowIndex) => {
+      rows[rowIndex][employeeIndex] = '';
+    });
+
+    const nextAssignments = normalizeAssignments(dataset.rowAssignments || [])
+      .filter((assignment) => !rowIndexes.includes(Number(assignment.rowIndex)));
+
+    dataset.columns = columns;
+    dataset.rows = rows;
+    dataset.rowAssignments = nextAssignments;
+    dataset.markModified('columns');
+    dataset.markModified('rows');
+    dataset.markModified('rowAssignments');
+    await dataset.save();
+
+    const removedByEmployee = new Map();
+    removedAssignments.forEach((assignment) => {
+      const employeeId = String(assignment.employee);
+      const existingRows = removedByEmployee.get(employeeId) || [];
+      removedByEmployee.set(employeeId, [...existingRows, Number(assignment.rowIndex)]);
+    });
+
+    const actorName = await getUserLabel(req.user.id);
+    await Promise.all(Array.from(removedByEmployee.entries()).map(([employeeId, removedRows]) => (
+      createNotification({
+        recipientRole: 'employee',
+        recipientUser: employeeId,
+        actorUser: req.user.id,
+        actorName,
+        actorRole: req.user.role,
+        type: 'client_unassignment',
+        title: 'Client data unassigned',
+        message: `${removedRows.length} row${removedRows.length > 1 ? 's were' : ' was'} unassigned from ${dataset.name}.`,
+        link: '/employee-dashboard/datasets',
+        meta: {
+          datasetId: dataset._id,
+          rowIndexes: removedRows,
+        },
+      })
+    )));
+
+    return res.json({
+      message: `${rowIndexes.length} rows unassigned`,
+      columns,
+      rows,
+      rowAssignments: nextAssignments,
+    });
+  } catch (error) {
+    console.error('Error unassigning client dataset rows:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const name = normalizeCell(req.body.name);
+    const year = normalizeCell(req.body.year);
+
+    if (!name) {
+      return res.status(400).json({ message: 'Dataset name is required' });
+    }
+
+    const dataset = await ClientDataset.findById(req.params.id);
+
+    if (!dataset) {
+      return res.status(404).json({ message: 'Client dataset not found' });
+    }
+
+    dataset.name = name;
+    dataset.year = year;
+    await dataset.save();
+
+    return res.json({
+      message: 'Client data file updated successfully',
+      dataset: {
+        _id: dataset._id,
+        name: dataset.name,
+        year: dataset.year,
+        originalFileName: dataset.originalFileName,
+        columns: dataset.columns,
+        rowCount: dataset.rowCount,
+        createdAt: dataset.createdAt,
+        updatedAt: dataset.updatedAt,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating client dataset:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const deletedDataset = await ClientDataset.findByIdAndDelete(req.params.id);
+
+    if (!deletedDataset) {
+      return res.status(404).json({ message: 'Client dataset not found' });
+    }
+
+    return res.json({
+      message: 'Client data file deleted successfully',
+      datasetId: req.params.id,
+    });
+  } catch (error) {
+    console.error('Error deleting client dataset:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    const { name, year } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Dataset name is required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Excel file is required' });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    const rawRows = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      defval: '',
+      blankrows: false,
+    });
+
+    const headerRow = rawRows.find((row) => row.some((cell) => normalizeCell(cell)));
+    if (!headerRow) {
+      return res.status(400).json({ message: 'No header row found in the Excel file' });
+    }
+
+    const headerIndex = rawRows.indexOf(headerRow);
+    const parsedColumns = headerRow.map((cell, index) => normalizeCell(cell) || `Column ${index + 1}`);
+    const parsedRows = rawRows.slice(headerIndex + 1);
+    const { columns, rows } = addWorkColumnsAfterWebsite(parsedColumns, parsedRows);
+    const filledRows = rows.filter((row) => row.some((cell) => cell));
+
+    const dataset = new ClientDataset({
+      name: name.trim(),
+      year: year?.trim() || '',
+      originalFileName: req.file.originalname,
+      columns,
+      rows: filledRows,
+      rowCount: filledRows.length,
+      uploadedBy: req.user.id,
+    });
+
+    await dataset.save();
+
+    return res.status(201).json({
+      message: 'Client data uploaded successfully',
+      dataset: {
+        _id: dataset._id,
+        name: dataset.name,
+        year: dataset.year,
+        originalFileName: dataset.originalFileName,
+        columns: dataset.columns,
+        rowCount: dataset.rowCount,
+        createdAt: dataset.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error('Error uploading client dataset:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+module.exports = router;
