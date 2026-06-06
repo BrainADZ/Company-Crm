@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-
-const API_URL = 'http://localhost:5000';
+import { API_BASE_URL } from '../config/api';
 
 const formatDateTime = (date, time) => {
   if (!date) return '-';
@@ -28,7 +27,7 @@ const AdminTasks = () => {
   useEffect(() => {
     const fetchSummary = async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/tasks/admin-summary`, {
+        const response = await axios.get(`${API_BASE_URL}/api/tasks/admin-summary`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` },
         });
         setSummary(response.data);

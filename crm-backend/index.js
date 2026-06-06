@@ -18,8 +18,13 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// Update CORS to allow both frontend ports (5173 and 5174)
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174'];
+const parseAllowedOrigins = (value) => (
+  value
+    ? value.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : ['http://localhost:5173', 'http://localhost:5174']
+);
+
+const allowedOrigins = parseAllowedOrigins(process.env.CLIENT_ORIGINS);
 
 app.use(cors({
   origin: function (origin, callback) {

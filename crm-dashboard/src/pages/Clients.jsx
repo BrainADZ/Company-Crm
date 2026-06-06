@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-
-const API_URL = 'http://localhost:5000';
+import { API_BASE_URL } from '../config/api';
 
 const getAuthHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem('adminToken')}`,
@@ -39,7 +38,7 @@ const Clients = () => {
   const fetchDatasets = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await axios.get(`${API_URL}/api/client-datasets`, {
+      const response = await axios.get(`${API_BASE_URL}/api/client-datasets`, {
         headers: getAuthHeaders(),
       });
       setDatasets(response.data);
@@ -73,7 +72,7 @@ const Clients = () => {
 
     setIsUploading(true);
     try {
-      const response = await axios.post(`${API_URL}/api/client-datasets/upload`, uploadData, {
+      const response = await axios.post(`${API_BASE_URL}/api/client-datasets/upload`, uploadData, {
         headers: getAuthHeaders(),
       });
       setMessage(response.data.message);
@@ -114,7 +113,7 @@ const Clients = () => {
 
     setUpdatingDatasetId(datasetId);
     try {
-      const response = await axios.patch(`${API_URL}/api/client-datasets/${datasetId}`, editFormData, {
+      const response = await axios.patch(`${API_BASE_URL}/api/client-datasets/${datasetId}`, editFormData, {
         headers: getAuthHeaders(),
       });
 
@@ -139,7 +138,7 @@ const Clients = () => {
 
     setDeletingDatasetId(dataset._id);
     try {
-      const response = await axios.delete(`${API_URL}/api/client-datasets/${dataset._id}`, {
+      const response = await axios.delete(`${API_BASE_URL}/api/client-datasets/${dataset._id}`, {
         headers: getAuthHeaders(),
       });
 

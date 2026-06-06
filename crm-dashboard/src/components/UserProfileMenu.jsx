@@ -4,8 +4,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { clearAuthToken } from '../utils/auth';
 import PasswordInput from './PasswordInput';
-
-const API_URL = 'http://localhost:5000';
+import { API_BASE_URL, getAssetUrl } from '../config/api';
 
 const inputClass = 'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400';
 const labelClass = 'mb-1.5 block text-xs font-medium text-slate-600';
@@ -13,12 +12,6 @@ const labelClass = 'mb-1.5 block text-xs font-medium text-slate-600';
 const getInitials = (name = '') => (
   name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'US'
 );
-
-const getImageUrl = (imageUrl) => {
-  if (!imageUrl) return '';
-  if (imageUrl.startsWith('http')) return imageUrl;
-  return `${API_URL}/${imageUrl.replace(/\\/g, '/')}`;
-};
 
 const UserProfileMenu = ({ role }) => {
   const navigate = useNavigate();
@@ -58,7 +51,7 @@ const UserProfileMenu = ({ role }) => {
 
     const fetchProfile = async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/profile`, {
+        const response = await axios.get(`${API_BASE_URL}/api/profile`, {
           headers: { Authorization: `Bearer ${localStorage.getItem(tokenKey)}` },
         });
 
@@ -121,7 +114,7 @@ const UserProfileMenu = ({ role }) => {
     if (imageFile) data.append('image', imageFile);
 
     try {
-      const response = await axios.put(`${API_URL}/api/profile`, data, {
+      const response = await axios.put(`${API_BASE_URL}/api/profile`, data, {
         headers: { Authorization: `Bearer ${localStorage.getItem(tokenKey)}` },
       });
       setProfile(response.data.user);
@@ -157,7 +150,7 @@ const UserProfileMenu = ({ role }) => {
     if (profile) syncForm(profile);
   };
 
-  const avatarUrl = imagePreview || getImageUrl(profile?.imageUrl);
+  const avatarUrl = imagePreview || getAssetUrl(profile?.imageUrl);
   const accentClass = role === 'admin' ? 'from-blue-700 to-indigo-600' : 'from-emerald-700 to-teal-600';
   const buttonAccent = role === 'admin' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700';
   const detailRows = [

@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import companyImage from '../assets/Company.jpg';
 import PasswordInput from '../components/PasswordInput';
+import { API_BASE_URL } from '../config/api';
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100';
 
@@ -19,7 +20,7 @@ const EmployeeLogin = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/employee-login', formData);
+      const response = await axios.post(`${API_BASE_URL}/api/auth/employee-login`, formData);
       if (response.data?.token) {
         localStorage.setItem('employeeToken', response.data.token);
         navigate('/employee-dashboard');

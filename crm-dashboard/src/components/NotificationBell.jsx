@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { getValidToken } from '../utils/auth';
-
-const API_URL = 'http://localhost:5000';
+import { API_BASE_URL } from '../config/api';
 
 const notificationTone = {
   client_assignment: 'bg-blue-50 text-blue-700',
@@ -72,7 +71,7 @@ const NotificationBell = ({ role }) => {
 
     setIsLoading(true);
     try {
-      const response = await axios.get(`${API_URL}/api/notifications`, { headers });
+      const response = await axios.get(`${API_BASE_URL}/api/notifications`, { headers });
       setNotifications(response.data.notifications || []);
       setUnreadCount(response.data.unreadCount || 0);
       setError('');
@@ -127,7 +126,7 @@ const NotificationBell = ({ role }) => {
     if (!headers) return;
 
     try {
-      await axios.patch(`${API_URL}/api/notifications/${notificationId}/read`, {}, { headers });
+      await axios.patch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {}, { headers });
     } catch {
       fetchNotifications();
     }
@@ -141,7 +140,7 @@ const NotificationBell = ({ role }) => {
     setUnreadCount(0);
 
     try {
-      await axios.patch(`${API_URL}/api/notifications/read-all`, {}, { headers });
+      await axios.patch(`${API_BASE_URL}/api/notifications/read-all`, {}, { headers });
     } catch {
       fetchNotifications();
     }
@@ -155,7 +154,7 @@ const NotificationBell = ({ role }) => {
     setUnreadCount(0);
 
     try {
-      await axios.delete(`${API_URL}/api/notifications`, { headers });
+      await axios.delete(`${API_BASE_URL}/api/notifications`, { headers });
     } catch {
       fetchNotifications();
     }

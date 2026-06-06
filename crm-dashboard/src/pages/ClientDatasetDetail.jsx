@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useParams } from 'react-router-dom';
 import { getAuthenticatedRole, getValidToken } from '../utils/auth';
+import { API_BASE_URL } from '../config/api';
 
-const API_URL = 'http://localhost:5000';
 const CLIENT_WORK_COLUMNS = ['Status', 'Remark', 'Employee'];
 const CLIENT_STATUS_OPTIONS = [
   'Pending',
@@ -108,12 +108,12 @@ const ClientDatasetDetail = () => {
       try {
         const token = getAuthToken();
         const headers = { Authorization: `Bearer ${token}` };
-        const response = await axios.get(`${API_URL}/api/client-datasets/${datasetId}`, {
+        const response = await axios.get(`${API_BASE_URL}/api/client-datasets/${datasetId}`, {
           headers,
         });
 
         if (getAuthenticatedRole() === 'admin') {
-          const employeesResponse = await axios.get(`${API_URL}/api/employees`, {
+          const employeesResponse = await axios.get(`${API_BASE_URL}/api/employees`, {
             headers,
           });
           setEmployees(employeesResponse.data);
@@ -194,7 +194,7 @@ const ClientDatasetDetail = () => {
     const token = getAuthToken();
     setIsAssigning(true);
     try {
-      const response = await axios.patch(`${API_URL}/api/client-datasets/${datasetId}/assign`, {
+      const response = await axios.patch(`${API_BASE_URL}/api/client-datasets/${datasetId}/assign`, {
         rowIndexes: selectedRows,
         employeeId: selectedEmployeeId,
       }, {
@@ -222,7 +222,7 @@ const ClientDatasetDetail = () => {
     const token = getAuthToken();
     setIsAssigning(true);
     try {
-      const response = await axios.patch(`${API_URL}/api/client-datasets/${datasetId}/unassign`, {
+      const response = await axios.patch(`${API_BASE_URL}/api/client-datasets/${datasetId}/unassign`, {
         rowIndexes: selectedRows,
       }, {
         headers: { Authorization: `Bearer ${token}` },
@@ -270,7 +270,7 @@ const ClientDatasetDetail = () => {
     try {
       const originalRowIndex = getOriginalRowIndex(rowIndex);
       const response = await axios.patch(
-        `${API_URL}/api/client-datasets/${datasetId}/rows/${originalRowIndex}/status`,
+        `${API_BASE_URL}/api/client-datasets/${datasetId}/rows/${originalRowIndex}/status`,
         {
           status: rowsOverride[rowIndex]?.[statusIndex] || '',
           remark: rowsOverride[rowIndex]?.[remarkIndex] || '',
@@ -337,7 +337,7 @@ const ClientDatasetDetail = () => {
     }
 
     try {
-      const response = await axios.get(`${API_URL}/api/client-datasets/${datasetId}`, {
+      const response = await axios.get(`${API_BASE_URL}/api/client-datasets/${datasetId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setDataset(response.data);

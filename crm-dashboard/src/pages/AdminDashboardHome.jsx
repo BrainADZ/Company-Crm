@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-
-const API_URL = 'http://localhost:5000';
+import { API_BASE_URL, getAssetUrl } from '../config/api';
 
 const getAdminHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem('adminToken')}`,
@@ -31,12 +30,6 @@ const formatDate = (value) => {
 const getInitials = (name = '') => (
   name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'AD'
 );
-
-const getImageUrl = (imageUrl) => {
-  if (!imageUrl) return '';
-  if (imageUrl.startsWith('http')) return imageUrl;
-  return `${API_URL}/${imageUrl.replace(/\\/g, '/')}`;
-};
 
 const StatCard = ({ label, value, note, tone, icon }) => (
   <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
@@ -67,9 +60,9 @@ const AdminDashboardHome = () => {
     try {
       const headers = getAdminHeaders();
       const [profileResponse, summaryResponse, datasetsResponse] = await Promise.all([
-        axios.get(`${API_URL}/api/profile`, { headers }),
-        axios.get(`${API_URL}/api/tasks/admin-summary`, { headers }),
-        axios.get(`${API_URL}/api/client-datasets`, { headers }),
+        axios.get(`${API_BASE_URL}/api/profile`, { headers }),
+        axios.get(`${API_BASE_URL}/api/tasks/admin-summary`, { headers }),
+        axios.get(`${API_BASE_URL}/api/client-datasets`, { headers }),
       ]);
 
       setProfile(profileResponse.data.user);
@@ -99,7 +92,7 @@ const AdminDashboardHome = () => {
       .slice(0, 5)
   ), [taskSummary.employees]);
 
-  const avatarUrl = getImageUrl(profile?.imageUrl);
+  const avatarUrl = getAssetUrl(profile?.imageUrl);
   const todayLabel = new Intl.DateTimeFormat('en-IN', {
     weekday: 'long',
     day: 'numeric',

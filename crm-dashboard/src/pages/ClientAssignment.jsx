@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import Modal from 'react-modal';
+import { API_BASE_URL, getAssetUrl } from '../config/api';
 
 const avatarClasses = ['bg-blue-600', 'bg-violet-600', 'bg-rose-600', 'bg-teal-600', 'bg-amber-500', 'bg-emerald-600'];
 const fieldClass = 'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100';
@@ -30,7 +31,7 @@ const ClientAssignment = () => {
   });
 
   const fetchAssignments = async () => {
-    const response = await axios.get('http://localhost:5000/api/clients/assignments', authConfig());
+    const response = await axios.get(`${API_BASE_URL}/api/clients/assignments`, authConfig());
     setAssignments(response.data);
   };
 
@@ -38,9 +39,9 @@ const ClientAssignment = () => {
     const fetchData = async () => {
       try {
         const [employeesResponse, clientsResponse, assignmentsResponse] = await Promise.all([
-          axios.get('http://localhost:5000/api/employees', authConfig()),
-          axios.get('http://localhost:5000/api/clients', authConfig()),
-          axios.get('http://localhost:5000/api/clients/assignments', authConfig()),
+          axios.get(`${API_BASE_URL}/api/employees`, authConfig()),
+          axios.get(`${API_BASE_URL}/api/clients`, authConfig()),
+          axios.get(`${API_BASE_URL}/api/clients/assignments`, authConfig()),
         ]);
         setEmployees(employeesResponse.data);
         setClients(clientsResponse.data);
@@ -56,7 +57,7 @@ const ClientAssignment = () => {
   const handleAssign = async () => {
     try {
       await axios.post(
-        'http://localhost:5000/api/clients/assign/bulk',
+        `${API_BASE_URL}/api/clients/assign/bulk`,
         { clientIds: selectedClients, employeeId: selectedEmployee },
         authConfig(),
       );
@@ -71,7 +72,7 @@ const ClientAssignment = () => {
 
   const handleUnassign = async (clientId) => {
     try {
-      await axios.put(`http://localhost:5000/api/clients/${clientId}/unassign`, {}, authConfig());
+      await axios.put(`${API_BASE_URL}/api/clients/${clientId}/unassign`, {}, authConfig());
       await fetchAssignments();
       setModalAssignedClients((previous) => previous.filter((client) => client._id !== clientId));
     } catch (requestError) {
@@ -90,7 +91,7 @@ const ClientAssignment = () => {
 
   const handleReviewClick = async (client) => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/clients/${client._id}/comments`, authConfig());
+      const response = await axios.get(`${API_BASE_URL}/api/clients/${client._id}/comments`, authConfig());
       setComments(response.data.callLogs || []);
       setSelectedClientForReview(client);
       setReviewModalIsOpen(true);
@@ -290,7 +291,7 @@ const ClientAssignment = () => {
                 <p className="text-sm leading-6 text-slate-700">{log.comment}</p>
                 <span className="mt-3 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">{log.callStatus}</span>
                 {log.screenshotUrl && (
-                  <img src={`http://localhost:5000/${log.screenshotUrl}`} alt="Call log screenshot" className="mt-3 w-full rounded-lg border border-slate-200" />
+                  <img src={getAssetUrl(log.screenshotUrl)} alt="Call log screenshot" className="mt-3 w-full rounded-lg border border-slate-200" />
                 )}
               </article>
             ))

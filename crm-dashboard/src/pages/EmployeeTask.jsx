@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-
-const API_URL = 'http://localhost:5000';
+import { API_BASE_URL } from '../config/api';
 
 const emptyForm = {
   assignedClient: '',
@@ -45,8 +44,8 @@ const EmployeeTasks = () => {
   const fetchTaskData = useCallback(async () => {
     try {
       const [rowsResponse, meetingsResponse] = await Promise.all([
-        axios.get(`${API_URL}/api/tasks/employee/assigned-rows`, { headers: getEmployeeAuthHeaders() }),
-        axios.get(`${API_URL}/api/tasks/meetings/me`, { headers: getEmployeeAuthHeaders() }),
+        axios.get(`${API_BASE_URL}/api/tasks/employee/assigned-rows`, { headers: getEmployeeAuthHeaders() }),
+        axios.get(`${API_BASE_URL}/api/tasks/meetings/me`, { headers: getEmployeeAuthHeaders() }),
       ]);
       setAssignedRows(rowsResponse.data);
       setMeetings(meetingsResponse.data);
@@ -92,7 +91,7 @@ const EmployeeTasks = () => {
 
     setIsSaving(true);
     try {
-      const response = await axios.post(`${API_URL}/api/tasks/meetings`, {
+      const response = await axios.post(`${API_BASE_URL}/api/tasks/meetings`, {
         datasetId: selectedAssignedRow.datasetId,
         rowIndex: selectedAssignedRow.rowIndex,
         meetingTitle: formData.meetingTitle,

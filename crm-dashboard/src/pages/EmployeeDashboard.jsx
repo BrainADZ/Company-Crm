@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
-
-const API_URL = 'http://localhost:5000';
+import { API_BASE_URL, getAssetUrl } from '../config/api';
 
 const getEmployeeHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem('employeeToken')}`,
@@ -22,12 +21,6 @@ const formatDateTime = (date, time) => {
 const getInitials = (name = '') => (
   name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'EM'
 );
-
-const getImageUrl = (imageUrl) => {
-  if (!imageUrl) return '';
-  if (imageUrl.startsWith('http')) return imageUrl;
-  return `${API_URL}/${imageUrl.replace(/\\/g, '/')}`;
-};
 
 const statusClass = (status = '') => {
   const normalized = status.toLowerCase();
@@ -73,10 +66,10 @@ const EmployeeDashboard = () => {
     try {
       const headers = getEmployeeHeaders();
       const [employeeResponse, rowsResponse, datasetsResponse, meetingsResponse] = await Promise.all([
-        axios.get(`${API_URL}/api/employees/me`, { headers }),
-        axios.get(`${API_URL}/api/tasks/employee/assigned-rows`, { headers }),
-        axios.get(`${API_URL}/api/client-datasets/assigned/me`, { headers }),
-        axios.get(`${API_URL}/api/tasks/meetings/me`, { headers }),
+        axios.get(`${API_BASE_URL}/api/employees/me`, { headers }),
+        axios.get(`${API_BASE_URL}/api/tasks/employee/assigned-rows`, { headers }),
+        axios.get(`${API_BASE_URL}/api/client-datasets/assigned/me`, { headers }),
+        axios.get(`${API_BASE_URL}/api/tasks/meetings/me`, { headers }),
       ]);
 
       setEmployee(employeeResponse.data);
@@ -111,7 +104,7 @@ const EmployeeDashboard = () => {
 
   const followUpCount = statusCounts['Follow Up'] || 0;
   const pendingCount = statusCounts.Pending || 0;
-  const avatarUrl = getImageUrl(employee?.imageUrl);
+  const avatarUrl = getAssetUrl(employee?.imageUrl);
 
   if (isLoading && !employee) {
     return <div className="h-32 animate-pulse rounded-xl border border-slate-200 bg-white shadow-sm" />;

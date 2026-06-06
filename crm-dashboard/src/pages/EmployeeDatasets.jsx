@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-
-const API_URL = 'http://localhost:5000';
+import { API_BASE_URL } from '../config/api';
 
 const formatDate = (value) => (
   new Intl.DateTimeFormat('en-IN', {
@@ -24,7 +23,7 @@ const EmployeeDatasets = () => {
     const fetchAssignedDatasets = async () => {
       try {
         const token = localStorage.getItem('employeeToken');
-        const response = await axios.get(`${API_URL}/api/client-datasets/assigned/me`, {
+        const response = await axios.get(`${API_BASE_URL}/api/client-datasets/assigned/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setDatasets(response.data);

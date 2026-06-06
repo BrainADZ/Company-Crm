@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import companyImage from '../assets/Company.jpg';
 import PasswordInput from '../components/PasswordInput';
+import { API_BASE_URL } from '../config/api';
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100';
 
@@ -15,7 +16,7 @@ const AdminLogin = () => {
   const handleLogin = async (event) => {
     event.preventDefault();
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', { email, password });
+      const response = await axios.post(`${API_BASE_URL}/api/auth/login`, { email, password });
       if (response.data?.token) {
         localStorage.setItem('adminToken', response.data.token);
         navigate('/dashboard');

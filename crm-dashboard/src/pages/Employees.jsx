@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import Modal from 'react-modal';
 import PasswordInput from '../components/PasswordInput';
+import { API_BASE_URL, getAssetUrl } from '../config/api';
 
 Modal.setAppElement('#root');
 
@@ -38,7 +39,7 @@ const Employees = () => {
 
   const fetchEmployees = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/employees', {
+      const response = await axios.get(`${API_BASE_URL}/api/employees`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` },
       });
       setEmployees(response.data);
@@ -66,7 +67,7 @@ const Employees = () => {
         position: employee.position,
         image: null,
       });
-      setImagePreview(employee.imageUrl ? `http://localhost:5000/${employee.imageUrl}` : null);
+      setImagePreview(getAssetUrl(employee.imageUrl));
     } else {
       setIsEditing(false);
       setEditingEmployeeId(null);
@@ -102,8 +103,8 @@ const Employees = () => {
     try {
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` } };
       const response = isEditing
-        ? await axios.put(`http://localhost:5000/api/employees/${editingEmployeeId}`, data, config)
-        : await axios.post('http://localhost:5000/api/employees/register', data, config);
+        ? await axios.put(`${API_BASE_URL}/api/employees/${editingEmployeeId}`, data, config)
+        : await axios.post(`${API_BASE_URL}/api/employees/register`, data, config);
 
       setSuccess(response.data.message);
       setError('');
@@ -119,7 +120,7 @@ const Employees = () => {
     if (!window.confirm('Are you sure you want to delete this employee?')) return;
 
     try {
-      const response = await axios.delete(`http://localhost:5000/api/employees/${id}`, {
+      const response = await axios.delete(`${API_BASE_URL}/api/employees/${id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` },
       });
       alert(response.data.message);
@@ -156,7 +157,7 @@ const Employees = () => {
             <div className="flex items-center gap-4 border-b border-slate-100 p-5">
               {employee.imageUrl ? (
                 <img
-                  src={`http://localhost:5000/${employee.imageUrl}`}
+                  src={getAssetUrl(employee.imageUrl)}
                   alt={employee.name}
                   className="h-14 w-14 shrink-0 rounded-xl object-cover ring-2 ring-slate-100"
                 />
