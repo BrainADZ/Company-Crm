@@ -21,7 +21,7 @@ const server = http.createServer(app);
 const parseAllowedOrigins = (value) => (
   value
     ? value.split(',').map((origin) => origin.trim()).filter(Boolean)
-    : ['http://localhost:5173', 'http://localhost:5174']
+    : ['http://localhost:5173', 'http://localhost:5174', 'https://democrm.brainadzlive.in', 'http://democrm.brainadzlive.in']
 );
 
 const allowedOrigins = parseAllowedOrigins(process.env.CLIENT_ORIGINS);
