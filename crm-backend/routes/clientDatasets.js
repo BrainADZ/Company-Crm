@@ -91,6 +91,79 @@ const getCellValue = (columns, row, columnNames) => {
   return index === -1 ? '' : normalizeCell(row[index]);
 };
 
+const getDatasetSalesSummary = (dataset) => {
+  const normalizedData = addWorkColumnsAfterWebsite(dataset.columns || [], dataset.rows || []);
+  const statusIndex = getColumnIndex(normalizedData.columns, 'Status');
+  const employeeIndex = getColumnIndex(normalizedData.columns, 'Employee');
+  const statusCounts = CLIENT_STATUS_OPTIONS.reduce((counts, status) => ({
+    ...counts,
+    [status]: 0,
+  }), {});
+
+  normalizedData.rows.forEach((row) => {
+    const status = statusIndex === -1 ? '' : normalizeCell(row[statusIndex]);
+    if (statusCounts[status] !== undefined) statusCounts[status] += 1;
+  });
+
+  const assignedRows = normalizedData.rows.filter((row, rowIndex) => (
+    normalizeAssignments(dataset.rowAssignments || []).some((assignment) => Number(assignment.rowIndex) === rowIndex)
+    || (employeeIndex !== -1 && normalizeCell(row[employeeIndex]))
+  )).length;
+  const totalRows = normalizedData.rows.length;
+  const convertedRows = statusCounts.Converted || 0;
+  const interestedRows = statusCounts.Interested || 0;
+  const followUpRows = statusCounts['Follow Up'] || 0;
+  const contactedRows = statusCounts.Contacted || 0;
+  const lostRows = (statusCounts['Not Interested'] || 0) + (statusCounts['Not Reachable'] || 0);
+  const untouchedRows = totalRows - Object.values(statusCounts).reduce((sum, count) => sum + count, 0);
+
+  return {
+    totalRows,
+    assignedRows,
+    unassignedRows: Math.max(totalRows - assignedRows, 0),
+    openRows: Math.max(totalRows - convertedRows - lostRows, 0),
+    contactedRows,
+    followUpRows,
+    interestedRows,
+    convertedRows,
+    lostRows,
+    untouchedRows,
+    conversionRate: totalRows ? Math.round((convertedRows / totalRows) * 100) : 0,
+    statusCounts,
+  };
+};
+
+const getDatasetPreview = (dataset) => {
+  const normalizedData = addWorkColumnsAfterWebsite(dataset.columns || [], dataset.rows || []);
+  const firstRow = normalizedData.rows[0] || [];
+
+  return {
+    accountName: getCellValue(normalizedData.columns, firstRow, ['Account Name', 'Client Name', 'Company Name']),
+    phone: getCellValue(normalizedData.columns, firstRow, ['Phone', 'Mobile', 'Contact Number']),
+    website: getCellValue(normalizedData.columns, firstRow, ['Website', 'URL']),
+    billingCity: getCellValue(normalizedData.columns, firstRow, ['Billing City', 'City']),
+    billingState: getCellValue(normalizedData.columns, firstRow, ['Billing State/Province', 'State', 'State/Province']),
+  };
+};
+
+const getDatasetListItem = (dataset) => ({
+  _id: dataset._id,
+  name: dataset.name,
+  year: dataset.year,
+  label: dataset.label || 'Prospect List',
+  priority: dataset.priority || 'Medium',
+  source: dataset.source || 'Excel Import',
+  ownerAlias: dataset.ownerAlias || 'Admin',
+  salesStage: dataset.salesStage || 'Prospecting',
+  originalFileName: dataset.originalFileName,
+  rowCount: dataset.rowCount,
+  uploadedBy: dataset.uploadedBy,
+  createdAt: dataset.createdAt,
+  updatedAt: dataset.updatedAt,
+  summary: getDatasetSalesSummary(dataset),
+  preview: getDatasetPreview(dataset),
+});
+
 const getRowClientLabel = (columns, row, rowIndex) => (
   getCellValue(columns, row, ['Client Name', 'Company Name', 'Website'])
   || `Row ${rowIndex + 1}`
@@ -197,10 +270,9 @@ const getEmployeeDatasetResponse = (dataset, employeeId) => {
 router.get('/', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const datasets = await ClientDataset.find()
-      .select('-rows -rowLogs -rowAssignments')
       .sort({ createdAt: -1 });
 
-    res.json(datasets);
+    res.json(datasets.map(getDatasetListItem));
   } catch (error) {
     console.error('Error fetching client datasets:', error);
     res.status(500).json({ message: 'Server error' });
@@ -562,6 +634,11 @@ router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const name = normalizeCell(req.body.name);
     const year = normalizeCell(req.body.year);
+    const label = normalizeCell(req.body.label);
+    const priority = normalizeCell(req.body.priority);
+    const source = normalizeCell(req.body.source);
+    const ownerAlias = normalizeCell(req.body.ownerAlias);
+    const salesStage = normalizeCell(req.body.salesStage);
 
     if (!name) {
       return res.status(400).json({ message: 'Dataset name is required' });
@@ -575,23 +652,113 @@ router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
 
     dataset.name = name;
     dataset.year = year;
+    if (label) dataset.label = label;
+    if (['Low', 'Medium', 'High'].includes(priority)) dataset.priority = priority;
+    if (source) dataset.source = source;
+    if (ownerAlias) dataset.ownerAlias = ownerAlias;
+    if (salesStage) dataset.salesStage = salesStage;
     await dataset.save();
 
     return res.json({
       message: 'Client data file updated successfully',
-      dataset: {
-        _id: dataset._id,
-        name: dataset.name,
-        year: dataset.year,
-        originalFileName: dataset.originalFileName,
-        columns: dataset.columns,
-        rowCount: dataset.rowCount,
-        createdAt: dataset.createdAt,
-        updatedAt: dataset.updatedAt,
-      },
+      dataset: getDatasetListItem(dataset),
     });
   } catch (error) {
     console.error('Error updating client dataset:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.patch('/labels/bulk', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const datasetIds = Array.isArray(req.body.datasetIds) ? req.body.datasetIds : [];
+    const label = normalizeCell(req.body.label);
+    const priority = normalizeCell(req.body.priority);
+    const salesStage = normalizeCell(req.body.salesStage);
+
+    if (datasetIds.length === 0) {
+      return res.status(400).json({ message: 'Select at least one account list' });
+    }
+
+    if (!label && !priority && !salesStage) {
+      return res.status(400).json({ message: 'Add a label, priority, or sales stage to update' });
+    }
+
+    const update = {};
+    if (label) update.label = label;
+    if (['Low', 'Medium', 'High'].includes(priority)) update.priority = priority;
+    if (salesStage) update.salesStage = salesStage;
+
+    await ClientDataset.updateMany({ _id: { $in: datasetIds } }, { $set: update });
+    const datasets = await ClientDataset.find({ _id: { $in: datasetIds } });
+
+    return res.json({
+      message: `${datasets.length} account list${datasets.length === 1 ? '' : 's'} updated`,
+      datasets: datasets.map(getDatasetListItem),
+    });
+  } catch (error) {
+    console.error('Error updating account labels:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.post('/', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const name = normalizeCell(req.body.name);
+    const year = normalizeCell(req.body.year);
+    const accountName = normalizeCell(req.body.accountName);
+    const phone = normalizeCell(req.body.phone);
+    const website = normalizeCell(req.body.website);
+    const billingCity = normalizeCell(req.body.billingCity);
+    const billingState = normalizeCell(req.body.billingState);
+    const label = normalizeCell(req.body.label) || 'Prospect List';
+    const priority = normalizeCell(req.body.priority) || 'Medium';
+    const source = normalizeCell(req.body.source) || 'Manual';
+    const ownerAlias = normalizeCell(req.body.ownerAlias) || 'Admin';
+    const salesStage = normalizeCell(req.body.salesStage) || 'Prospecting';
+
+    if (!name) {
+      return res.status(400).json({ message: 'Account list name is required' });
+    }
+
+    if (!accountName) {
+      return res.status(400).json({ message: 'Account name is required' });
+    }
+
+    const accountColumns = [
+      'Account Name',
+      'Phone',
+      'Website',
+      'Billing City',
+      'Billing State/Province',
+      'Account Owner Alias',
+    ];
+    const accountRow = [accountName, phone, website, billingCity, billingState, ownerAlias];
+    const normalizedAccountData = addWorkColumnsAfterWebsite(accountColumns, [accountRow]);
+
+    const dataset = new ClientDataset({
+      name,
+      year,
+      label,
+      priority: ['Low', 'Medium', 'High'].includes(priority) ? priority : 'Medium',
+      source,
+      ownerAlias,
+      salesStage,
+      originalFileName: 'Manual account list',
+      columns: normalizedAccountData.columns,
+      rows: normalizedAccountData.rows,
+      rowCount: normalizedAccountData.rows.length,
+      uploadedBy: req.user.id,
+    });
+
+    await dataset.save();
+
+    return res.status(201).json({
+      message: 'Account list created successfully',
+      dataset: getDatasetListItem(dataset),
+    });
+  } catch (error) {
+    console.error('Error creating account list:', error);
     return res.status(500).json({ message: error.message || 'Server error' });
   }
 });
@@ -649,6 +816,11 @@ router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), asyn
     const dataset = new ClientDataset({
       name: name.trim(),
       year: year?.trim() || '',
+      label: normalizeCell(req.body.label) || 'Prospect List',
+      priority: ['Low', 'Medium', 'High'].includes(normalizeCell(req.body.priority)) ? normalizeCell(req.body.priority) : 'Medium',
+      source: normalizeCell(req.body.source) || 'Excel Import',
+      ownerAlias: normalizeCell(req.body.ownerAlias) || 'Admin',
+      salesStage: normalizeCell(req.body.salesStage) || 'Prospecting',
       originalFileName: req.file.originalname,
       columns,
       rows: filledRows,
@@ -660,15 +832,7 @@ router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), asyn
 
     return res.status(201).json({
       message: 'Client data uploaded successfully',
-      dataset: {
-        _id: dataset._id,
-        name: dataset.name,
-        year: dataset.year,
-        originalFileName: dataset.originalFileName,
-        columns: dataset.columns,
-        rowCount: dataset.rowCount,
-        createdAt: dataset.createdAt,
-      },
+      dataset: getDatasetListItem(dataset),
     });
   } catch (error) {
     console.error('Error uploading client dataset:', error);

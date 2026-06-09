@@ -32,6 +32,8 @@ const EmployeeLayout = () => {
     ? 'Client Data'
     : location.pathname.endsWith('/tasks')
       ? 'Tasks'
+      : location.pathname.endsWith('/settings')
+        ? 'Settings'
       : 'Dashboard';
 
   return (
@@ -71,7 +73,7 @@ const EmployeeLayout = () => {
       </aside>
 
       <div className="min-h-screen pl-20 lg:pl-64">
-        <WorkspaceTopbar title={pageTitle} role="employee" />
+        <WorkspaceTopbar title={pageTitle} role="employee" showSearch={!location.pathname.endsWith('/settings')} />
         <main className="w-full p-4 sm:p-5 lg:p-6">
           <Outlet />
         </main>

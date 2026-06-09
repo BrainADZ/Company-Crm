@@ -28,6 +28,11 @@ const rowAssignmentSchema = new mongoose.Schema({
 const clientDatasetSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   year: { type: String, trim: true },
+  label: { type: String, default: 'Prospect List', trim: true },
+  priority: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
+  source: { type: String, default: 'Excel Import', trim: true },
+  ownerAlias: { type: String, default: 'Admin', trim: true },
+  salesStage: { type: String, default: 'Prospecting', trim: true },
   originalFileName: String,
   columns: [{ type: String }],
   rows: [[mongoose.Schema.Types.Mixed]],

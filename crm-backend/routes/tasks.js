@@ -226,6 +226,7 @@ router.get('/admin-summary', authMiddleware, requireAdmin, async (req, res) => {
       Meeting.find().populate('employee', 'name email position').sort({ meetingDate: 1, meetingTime: 1 }),
     ]);
 
+    const taskRows = [];
     const employeeStats = new Map(employees.map((employee) => [String(employee._id), {
       _id: employee._id,
       name: employee.name,
@@ -257,6 +258,37 @@ router.get('/admin-summary', authMiddleware, requireAdmin, async (req, res) => {
         stat.statusCounts[status] = (stat.statusCounts[status] || 0) + 1;
         if (status === 'Follow Up') stat.followUpCount += 1;
         if (status === 'Pending') stat.pendingCallCount += 1;
+
+        if (row) {
+          const rowIndex = Number(assignment.rowIndex);
+          const companyName = getCellValue(columns, row, ['Company Name', 'Company Name ']);
+          const clientName = getCellValue(columns, row, ['Client Name', 'Client Name '])
+            || companyName
+            || getCellValue(columns, row, ['Account Name'])
+            || `Row ${rowIndex + 1}`;
+
+          taskRows.push({
+            _id: `${datasetObject._id}-${rowIndex}`,
+            datasetId: datasetObject._id,
+            datasetName: datasetObject.name,
+            year: datasetObject.year,
+            rowIndex,
+            serialNumber: rowIndex + 1,
+            employeeId,
+            employeeName: stat.name || stat.email || 'Employee',
+            employeeEmail: stat.email || '',
+            employeePosition: stat.position || '',
+            clientName,
+            companyName,
+            city: getCellValue(columns, row, ['City', 'Billing City']),
+            phone: getCellValue(columns, row, ['Mobile 1', 'Mobile 1 ', 'Mobile', 'Phone', 'Contact Number']),
+            email: getCellValue(columns, row, ['Email 1', 'Email 1 ', 'Email']),
+            website: getCellValue(columns, row, ['Website', 'URL']),
+            status,
+            remark: getCellValue(columns, row, ['Remark']),
+            assignedAt: assignment.assignedAt || null,
+          });
+        }
       });
     });
 
@@ -270,15 +302,34 @@ router.get('/admin-summary', authMiddleware, requireAdmin, async (req, res) => {
       if (meeting.meetingDate >= today) stat.upcomingMeetingCount += 1;
     });
 
+    const employeeSummaries = Array.from(employeeStats.values());
+    const upcomingMeetingCount = meetings.filter((meeting) => meeting.meetingDate >= today).length;
+    const overdueMeetingCount = meetings.filter((meeting) => meeting.meetingDate < today).length;
+    const totalStatusCount = (statusName) => employeeSummaries.reduce((total, employee) => (
+      total + (employee.statusCounts[statusName] || 0)
+    ), 0);
+
     return res.json({
-      employees: Array.from(employeeStats.values()),
+      employees: employeeSummaries,
       meetings,
+      tasks: taskRows.sort((a, b) => {
+        const statusPriority = { 'Follow Up': 0, Pending: 1, Contacted: 2, Interested: 3, Converted: 4 };
+        const aPriority = statusPriority[a.status] ?? 5;
+        const bPriority = statusPriority[b.status] ?? 5;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return new Date(b.assignedAt || 0) - new Date(a.assignedAt || 0);
+      }),
       totals: {
         employees: employees.length,
-        assignedData: Array.from(employeeStats.values()).reduce((total, employee) => total + employee.assignedCount, 0),
-        followUps: Array.from(employeeStats.values()).reduce((total, employee) => total + employee.followUpCount, 0),
-        pendingCalls: Array.from(employeeStats.values()).reduce((total, employee) => total + employee.pendingCallCount, 0),
+        assignedData: employeeSummaries.reduce((total, employee) => total + employee.assignedCount, 0),
+        followUps: employeeSummaries.reduce((total, employee) => total + employee.followUpCount, 0),
+        pendingCalls: employeeSummaries.reduce((total, employee) => total + employee.pendingCallCount, 0),
+        contacted: totalStatusCount('Contacted'),
+        interested: totalStatusCount('Interested'),
+        converted: totalStatusCount('Converted'),
         meetings: meetings.length,
+        upcomingMeetings: upcomingMeetingCount,
+        pastMeetings: overdueMeetingCount,
       },
     });
   } catch (error) {

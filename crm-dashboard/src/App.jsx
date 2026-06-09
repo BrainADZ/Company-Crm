@@ -14,6 +14,7 @@ import AdminTasks from './pages/AdminTasks';
 import LoginSelectionPage from './pages/LoginSelectionPage'; // Ensure this import is correct
 import AdminDashboardHome from './pages/AdminDashboardHome';
 import WhatsAppDemo from './pages/WhatsAppDemo';
+import AccountSettings from './pages/AccountSettings';
 import { getAuthenticatedRole } from './utils/auth';
 
 const App = () => {
@@ -50,6 +51,7 @@ const App = () => {
           <Route path="employees" element={<Employees />} />
           <Route path="tasks" element={<AdminTasks />} />
           <Route path="whatsapp" element={<WhatsAppDemo />} />
+          <Route path="settings" element={<AccountSettings role="admin" />} />
           <Route path="assign-clients" element={<Navigate to="/dashboard/tasks" replace />} />
         </Route>
 
@@ -59,6 +61,7 @@ const App = () => {
           <Route path="tasks" element={<EmployeeTasks />} />
           <Route path="datasets" element={<EmployeeDatasets />} />
           <Route path="datasets/:datasetId" element={<ClientDatasetDetail />} />
+          <Route path="settings" element={<AccountSettings role="employee" />} />
         </Route>
 
         {/* Catch-all Route for Undefined Paths */}
