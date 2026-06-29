@@ -11,6 +11,7 @@ const profileRoutes = require('./routes/profile');
 const clientDatasetRoutes = require('./routes/clientDatasets');
 const taskRoutes = require('./routes/tasks');
 const notificationRoutes = require('./routes/notifications');
+const businessRoutes = require('./routes/business');
 const path = require('path');
 
 dotenv.config();
@@ -63,6 +64,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/client-datasets', clientDatasetRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/business', businessRoutes);
 
 // Socket.IO Setup
 const io = socketIo(server, {

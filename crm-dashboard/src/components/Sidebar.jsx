@@ -1,14 +1,43 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
   UserRoundCog,
   ListTodo,
+  Gauge,
   MessageCircle,
+  BarChart3,
+  BriefcaseBusiness,
+  CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Building2,
+  FileText,
+  FolderKanban,
+  FolderOpen,
+  ReceiptText,
+  ShieldCheck,
 } from 'lucide-react';
+
+const projectWorkItems = [
+  {
+    to: '/dashboard/projects',
+    label: 'Projects',
+    icon: FolderKanban,
+  },
+  {
+    to: '/dashboard/tasks',
+    label: 'Tasks',
+    icon: ListTodo,
+  },
+  {
+    to: '/dashboard/workload',
+    label: 'Team Workload',
+    icon: Gauge,
+  },
+];
 
 const navItems = [
   {
@@ -18,9 +47,40 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
+    to: '/dashboard/business',
+    label: 'Business OS',
+    icon: BriefcaseBusiness,
+  },
+  {
     to: '/dashboard/clients',
-    label: 'Clients',
+    label: 'Sales / Clients',
     icon: Users,
+  },
+  {
+    to: '/dashboard/communication',
+    label: 'Communication',
+    icon: MessageCircle,
+  },
+  {
+    to: '/dashboard/marketing',
+    label: 'Marketing',
+    icon: BarChart3,
+  },
+  {
+    to: '/dashboard/accounting',
+    label: 'Accounting',
+    icon: ReceiptText,
+  },
+  {
+    id: 'project-work',
+    label: 'Project Work',
+    icon: FolderKanban,
+    children: projectWorkItems,
+  },
+  {
+    to: '/dashboard/documents',
+    label: 'Documents',
+    icon: FolderOpen,
   },
   {
     to: '/dashboard/employees',
@@ -28,24 +88,37 @@ const navItems = [
     icon: UserRoundCog,
   },
   {
-    to: '/dashboard/tasks',
-    label: 'Tasks',
-    icon: ListTodo,
+    to: '/dashboard/meetings',
+    label: 'Meetings',
+    icon: CalendarDays,
+  },
+  {
+    to: '/dashboard/permissions',
+    label: 'Permissions',
+    icon: ShieldCheck,
   },
   {
     to: '/dashboard/whatsapp',
     label: 'WhatsApp',
-    icon: MessageCircle,
+    icon: FileText,
   },
 ];
 
 const Sidebar = ({ collapsed, setCollapsed }) => {
   const location = useLocation();
+  const [openGroups, setOpenGroups] = useState({});
 
   const isActive = (item) =>
     item.exact
       ? location.pathname === item.to
       : location.pathname.startsWith(item.to);
+
+  const toggleGroup = (groupId) => {
+    setOpenGroups((current) => ({
+      ...current,
+      [groupId]: !current[groupId],
+    }));
+  };
 
   return (
     <aside
@@ -95,6 +168,80 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
         <div className="space-y-1.5">
           {navItems.map((item) => {
             const Icon = item.icon;
+            const groupActive = item.children?.some((child) => isActive(child));
+
+            if (item.children) {
+              const groupOpen = !collapsed && (openGroups[item.id] || groupActive);
+
+              return (
+                <div key={item.id} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (collapsed) {
+                        setCollapsed(false);
+                        setOpenGroups((current) => ({ ...current, [item.id]: true }));
+                        return;
+                      }
+
+                      toggleGroup(item.id);
+                    }}
+                    title={collapsed ? item.label : ''}
+                    className={`group flex w-full items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                      collapsed ? 'justify-center' : 'gap-3'
+                    } ${
+                      groupActive || groupOpen
+                        ? 'bg-white/10 text-white'
+                        : 'text-blue-100/85 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <Icon size={19} strokeWidth={1.7} className="shrink-0 text-current" />
+
+                    {!collapsed && (
+                      <>
+                        <span className="flex-1 truncate text-left">{item.label}</span>
+                        {groupOpen ? (
+                          <ChevronDown size={16} strokeWidth={1.9} className="shrink-0" />
+                        ) : (
+                          <ChevronRight size={16} strokeWidth={1.9} className="shrink-0" />
+                        )}
+                      </>
+                    )}
+                  </button>
+
+                  {groupOpen && (
+                    <div className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                      {item.children.map((child) => {
+                        const ChildIcon = child.icon;
+                        const childActive = isActive(child);
+
+                        return (
+                          <Link
+                            key={child.to}
+                            to={child.to}
+                            className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                              childActive
+                                ? 'bg-white text-[#123985] shadow-sm'
+                                : 'text-blue-100/80 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            <ChildIcon
+                              size={17}
+                              strokeWidth={1.7}
+                              className={`shrink-0 ${
+                                childActive ? 'text-[#123985]' : 'text-current'
+                              }`}
+                            />
+                            <span className="truncate">{child.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             const active = isActive(item);
 
             return (

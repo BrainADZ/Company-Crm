@@ -15,6 +15,15 @@ import LoginSelectionPage from './pages/LoginSelectionPage'; // Ensure this impo
 import AdminDashboardHome from './pages/AdminDashboardHome';
 import WhatsAppDemo from './pages/WhatsAppDemo';
 import AccountSettings from './pages/AccountSettings';
+import BusinessOverview from './pages/BusinessOverview';
+import CommunicationHub from './pages/CommunicationHub';
+import MarketingHub from './pages/MarketingHub';
+import AccountingHub from './pages/AccountingHub';
+import ProjectsHub from './pages/ProjectsHub';
+import DocumentsHub from './pages/DocumentsHub';
+import PermissionsHub from './pages/PermissionsHub';
+import Meetings from './pages/Meetings';
+import TeamWorkload from './pages/TeamWorkload';
 import { getAuthenticatedRole } from './utils/auth';
 
 const App = () => {
@@ -46,10 +55,19 @@ const App = () => {
         {/* Admin Dashboard Routes */}
         <Route path="/dashboard" element={<PrivateRoute role="admin"><DashboardLayout /></PrivateRoute>}>
           <Route index element={<AdminDashboardHome />} />
+          <Route path="business" element={<BusinessOverview />} />
           <Route path="clients" element={<Clients />} />
           <Route path="clients/:datasetId" element={<ClientDatasetDetail />} />
           <Route path="employees" element={<Employees />} />
           <Route path="tasks" element={<AdminTasks />} />
+          <Route path="workload" element={<TeamWorkload />} />
+          <Route path="meetings" element={<Meetings />} />
+          <Route path="communication" element={<CommunicationHub />} />
+          <Route path="marketing" element={<MarketingHub />} />
+          <Route path="accounting" element={<AccountingHub />} />
+          <Route path="projects" element={<ProjectsHub />} />
+          <Route path="documents" element={<DocumentsHub />} />
+          <Route path="permissions" element={<PermissionsHub />} />
           <Route path="whatsapp" element={<WhatsAppDemo />} />
           <Route path="settings" element={<AccountSettings role="admin" />} />
           <Route path="assign-clients" element={<Navigate to="/dashboard/tasks" replace />} />

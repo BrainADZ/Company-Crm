@@ -1,110 +1,144 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
-import { API_BASE_URL, getAssetUrl } from '../config/api';
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  Download,
+  FolderKanban,
+  GripVertical,
+  ListTodo,
+  Plus,
+  RefreshCw,
+  Search,
+  Target,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
+import {
+  createBusinessResource,
+  deleteBusinessResource,
+  getAdminHeaders,
+  listBusinessResource,
+  updateBusinessResource,
+} from '../services/businessApi';
 
-const statusStyles = {
-  Pending: 'border-amber-200 bg-amber-50 text-amber-700',
-  Contacted: 'border-sky-200 bg-sky-50 text-sky-700',
-  'Follow Up': 'border-violet-200 bg-violet-50 text-violet-700',
-  Interested: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  Converted: 'border-green-200 bg-green-50 text-green-700',
-  'Not Interested': 'border-rose-200 bg-rose-50 text-rose-700',
-  'Not Reachable': 'border-orange-200 bg-orange-50 text-orange-700',
+const taskStatuses = ['Backlog', 'To Do', 'In Progress', 'Review', 'Complete'];
+const priorityOptions = ['High', 'Medium', 'Low'];
+const teamOptions = ['Delivery', 'Sales', 'Marketing', 'Accounts', 'Operations', 'Support'];
+
+const todayKey = new Date().toISOString().slice(0, 10);
+
+const emptyTask = {
+  name: '',
+  project: '',
+  assignee: '',
+  assigneeEmail: '',
+  team: 'Delivery',
+  due: todayKey,
+  status: 'To Do',
+  progress: 0,
+  dependency: '',
+  priority: 'Medium',
+  milestone: false,
 };
 
-const filterOptions = [
-  { id: 'all', label: 'All Tasks' },
-  { id: 'attention', label: 'Needs Attention' },
-  { id: 'follow-up', label: 'Follow Ups' },
-  { id: 'pending', label: 'Pending Calls' },
-  { id: 'meeting-ready', label: 'Meeting Ready' },
-];
+const statusTone = {
+  Backlog: 'border-slate-200 bg-slate-50 text-slate-700',
+  'To Do': 'border-blue-200 bg-blue-50 text-blue-700',
+  'In Progress': 'border-amber-200 bg-amber-50 text-amber-700',
+  Review: 'border-violet-200 bg-violet-50 text-violet-700',
+  Complete: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+};
 
-const meetingFilters = [
-  { id: 'upcoming', label: 'Upcoming' },
-  { id: 'today', label: 'Today' },
-  { id: 'all', label: 'All' },
-  { id: 'past', label: 'Past' },
-];
+const priorityTone = {
+  High: 'border-red-200 bg-red-50 text-red-700',
+  Medium: 'border-amber-200 bg-amber-50 text-amber-700',
+  Low: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+};
 
-const avatarClasses = ['bg-blue-600', 'bg-violet-600', 'bg-rose-600', 'bg-teal-600', 'bg-amber-500', 'bg-emerald-600'];
-const iconClass = 'h-4 w-4 fill-none stroke-current';
-const iconButtonClass = 'inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 hover:text-blue-700';
+const iconButtonClass = 'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700';
+const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+const labelClass = 'text-xs font-bold uppercase tracking-wide text-slate-500';
 
 const getInitials = (name = '') => (
-  name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'EM'
+  name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'TM'
 );
 
-const getAvatarClass = (name = '') => avatarClasses[(name.charCodeAt(0) || 0) % avatarClasses.length];
+const clampProgress = (value) => Math.max(0, Math.min(100, Number(value) || 0));
 
-const formatDateTime = (date, time) => {
-  if (!date) return '-';
-
-  return new Intl.DateTimeFormat('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(`${date}T${time || '00:00'}`));
-};
-
-const getToday = () => new Date().toISOString().slice(0, 10);
-
-const getStatusClass = (status = 'Pending') => (
-  statusStyles[status] || 'border-slate-200 bg-slate-50 text-slate-600'
-);
-
-const getTaskPriority = (status = 'Pending') => {
-  if (status === 'Follow Up') return 'High';
-  if (status === 'Pending') return 'Medium';
-  if (status === 'Interested') return 'Warm';
-  if (status === 'Converted') return 'Won';
-  return 'Normal';
-};
-
-const getNextStep = (employee) => {
-  if ((employee.followUpCount || 0) > 0) return 'Follow up due';
-  if ((employee.pendingCallCount || 0) > 0) return 'Call pending';
-  if ((employee.upcomingMeetingCount || 0) > 0) return 'Meeting set';
-  if ((employee.assignedCount || 0) === 0) return 'No assignment';
-  return 'On track';
+const formatDate = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
+const Modal = ({ title, children, onClose }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
+    <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-2xl">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Task control</p>
+          <h2 className="text-lg font-bold text-slate-950">{title}</h2>
+        </div>
+        <button type="button" onClick={onClose} className={iconButtonClass} title="Close">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="max-h-[calc(90vh-5rem)] overflow-y-auto p-5">
+        {children}
+      </div>
+    </div>
+  </div>
+);
+
 const AdminTasks = () => {
-  const [summary, setSummary] = useState({ employees: [], meetings: [], tasks: [], totals: {} });
+  const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [taskForm, setTaskForm] = useState(emptyTask);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [taskStatusFilter, setTaskStatusFilter] = useState('all');
-  const [taskOwnerFilter, setTaskOwnerFilter] = useState('all');
-  const [meetingFilter, setMeetingFilter] = useState('upcoming');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState('');
+  const [activeDropStatus, setActiveDropStatus] = useState('');
+  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const fetchSummary = useCallback(async ({ silent = false } = {}) => {
+  const fetchWorkspace = useCallback(async ({ silent = false } = {}) => {
     if (silent) {
       setIsRefreshing(true);
     } else {
       setIsLoading(true);
     }
-
     setError('');
+
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/tasks/admin-summary`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` },
-      });
-      setSummary({
-        employees: response.data.employees || [],
-        meetings: response.data.meetings || [],
-        tasks: response.data.tasks || [],
-        totals: response.data.totals || {},
-      });
+      const [projectRows, taskRows, employeeResponse] = await Promise.all([
+        listBusinessResource('projects'),
+        listBusinessResource('project-tasks'),
+        axios.get(`${API_BASE_URL}/api/employees`, { headers: getAdminHeaders() }),
+      ]);
+
+      setProjects(projectRows || []);
+      setTasks(taskRows || []);
+      setEmployees(Array.isArray(employeeResponse.data) ? employeeResponse.data : employeeResponse.data?.employees || []);
     } catch (requestError) {
-      setError(requestError.response?.data?.message || 'Unable to load task summary');
+      setError(requestError.response?.data?.message || 'Unable to load employee tasks');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -112,121 +146,224 @@ const AdminTasks = () => {
   }, []);
 
   useEffect(() => {
-    fetchSummary();
-  }, [fetchSummary]);
+    fetchWorkspace();
+  }, [fetchWorkspace]);
 
-  const today = getToday();
+  const projectById = useMemo(() => (
+    projects.reduce((map, project) => {
+      map[String(project._id)] = project;
+      return map;
+    }, {})
+  ), [projects]);
+
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const employees = useMemo(() => summary.employees || [], [summary.employees]);
-  const meetings = useMemo(() => summary.meetings || [], [summary.meetings]);
-  const tasks = useMemo(() => summary.tasks || [], [summary.tasks]);
-  const totals = summary.totals || {};
-
-  const taskStatusOptions = useMemo(() => (
-    ['all', ...new Set(tasks.map((task) => task.status || 'Pending'))]
-  ), [tasks]);
-
-  const filteredEmployees = useMemo(() => (
-    employees.filter((employee) => {
-      const matchesSearch = !normalizedSearch || [
-        employee.name,
-        employee.email,
-        employee.position,
-        getNextStep(employee),
-      ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
-
-      const matchesFilter = activeFilter === 'all'
-        || (activeFilter === 'attention' && ((employee.followUpCount || 0) > 0 || (employee.pendingCallCount || 0) > 0))
-        || (activeFilter === 'follow-up' && (employee.followUpCount || 0) > 0)
-        || (activeFilter === 'pending' && (employee.pendingCallCount || 0) > 0)
-        || (activeFilter === 'meeting-ready' && (employee.upcomingMeetingCount || 0) > 0);
-
-      return matchesSearch && matchesFilter;
-    })
-  ), [activeFilter, employees, normalizedSearch]);
 
   const filteredTasks = useMemo(() => (
     tasks.filter((task) => {
       const matchesSearch = !normalizedSearch || [
-        task.clientName,
-        task.companyName,
-        task.datasetName,
-        task.employeeName,
-        task.phone,
-        task.email,
-        task.city,
+        task.name,
+        task.projectName,
+        projectById[String(task.project)]?.name,
+        task.assignee,
+        task.assigneeEmail,
+        task.team,
         task.status,
-        task.remark,
+        task.priority,
+        task.dependency,
       ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
 
-      const matchesStatus = taskStatusFilter === 'all' || task.status === taskStatusFilter;
-      const matchesOwner = taskOwnerFilter === 'all' || String(task.employeeId) === String(taskOwnerFilter);
+      const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
+      const matchesOwner = ownerFilter === 'all'
+        || task.assigneeEmail === ownerFilter
+        || task.assignee === ownerFilter;
 
       return matchesSearch && matchesStatus && matchesOwner;
     })
-  ), [normalizedSearch, taskOwnerFilter, taskStatusFilter, tasks]);
+  ), [normalizedSearch, ownerFilter, projectById, statusFilter, tasks]);
 
-  const filteredMeetings = useMemo(() => (
-    meetings.filter((meeting) => {
-      const meetingDate = meeting.meetingDate || '';
-      if (meetingFilter === 'today') return meetingDate === today;
-      if (meetingFilter === 'upcoming') return meetingDate >= today;
-      if (meetingFilter === 'past') return meetingDate < today;
-      return true;
-    })
-  ), [meetingFilter, meetings, today]);
+  const openTasks = useMemo(() => tasks.filter((task) => task.status !== 'Complete'), [tasks]);
+  const dueToday = useMemo(() => openTasks.filter((task) => task.due === todayKey).length, [openTasks]);
+  const overdue = useMemo(() => openTasks.filter((task) => task.due && task.due < todayKey).length, [openTasks]);
+  const milestoneCount = useMemo(() => tasks.filter((task) => task.milestone).length, [tasks]);
+  const completionRate = tasks.length ? Math.round((tasks.filter((task) => task.status === 'Complete').length / tasks.length) * 100) : 0;
 
-  const totalsCards = [
+  const metricCards = [
     {
-      label: 'Assigned Work',
-      value: totals.assignedData || 0,
-      copy: `${totals.pendingCalls || 0} pending calls`,
+      label: 'Active Projects',
+      value: projects.filter((project) => project.health !== 'Closed').length,
+      copy: `${projects.length} total projects`,
+      icon: FolderKanban,
       tone: 'bg-blue-50 text-blue-700',
-      icon: <><path d="M4 4h16v16H4z" /><path d="M4 10h16" /><path d="M10 4v16" /></>,
     },
     {
-      label: 'Follow Ups',
-      value: totals.followUps || 0,
-      copy: 'Needs next action',
-      tone: 'bg-violet-50 text-violet-700',
-      icon: <><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 3v6h6" /><path d="M12 7v5l3 2" /></>,
-    },
-    {
-      label: 'Converted',
-      value: totals.converted || 0,
-      copy: `${totals.interested || 0} interested`,
-      tone: 'bg-emerald-50 text-emerald-700',
-      icon: <><path d="m5 12 4 4L19 6" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>,
-    },
-    {
-      label: 'Meetings',
-      value: totals.meetings || 0,
-      copy: `${totals.upcomingMeetings || 0} upcoming`,
+      label: 'Tasks Due Today',
+      value: dueToday,
+      copy: 'Need same-day action',
+      icon: CalendarClock,
       tone: 'bg-amber-50 text-amber-700',
-      icon: <><path d="M8 2v4" /><path d="M16 2v4" /><path d="M3 10h18" /><path d="M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z" /></>,
+    },
+    {
+      label: 'Overdue Tasks',
+      value: overdue,
+      copy: 'Needs manager attention',
+      icon: AlertTriangle,
+      tone: 'bg-red-50 text-red-700',
+    },
+    {
+      label: 'Open Tasks',
+      value: openTasks.length,
+      copy: 'Not completed yet',
+      icon: ListTodo,
+      tone: 'bg-violet-50 text-violet-700',
+    },
+    {
+      label: 'Milestones',
+      value: milestoneCount,
+      copy: 'Marked as key deliverables',
+      icon: Target,
+      tone: 'bg-indigo-50 text-indigo-700',
+    },
+    {
+      label: 'Completion Rate',
+      value: `${completionRate}%`,
+      copy: `${tasks.filter((task) => task.status === 'Complete').length} completed tasks`,
+      icon: CheckCircle2,
+      tone: 'bg-emerald-50 text-emerald-700',
     },
   ];
 
+  const groupedTasks = useMemo(() => (
+    taskStatuses.map((status) => ({
+      status,
+      tasks: filteredTasks.filter((task) => task.status === status),
+    }))
+  ), [filteredTasks]);
+
+  const updateForm = (field, value) => {
+    setTaskForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const openTaskModal = () => {
+    setTaskForm(emptyTask);
+    setMessage('');
+    setError('');
+    setIsModalOpen(true);
+  };
+
+  const submitTask = async (event) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const selectedEmployee = employees.find((employee) => (
+        String(employee._id) === String(taskForm.assignee)
+        || employee.email === taskForm.assignee
+        || employee.name === taskForm.assignee
+      ));
+      const selectedProject = projects.find((project) => String(project._id) === String(taskForm.project));
+      const progress = taskForm.status === 'Complete' ? 100 : clampProgress(taskForm.progress);
+
+      await createBusinessResource('project-tasks', {
+        ...taskForm,
+        project: selectedProject?._id || undefined,
+        projectName: selectedProject?.name || 'General Task',
+        assignee: selectedEmployee?.name || taskForm.assignee,
+        assigneeEmail: selectedEmployee?.email || taskForm.assigneeEmail,
+        team: selectedEmployee?.team || taskForm.team,
+        progress,
+      });
+
+      setTaskForm(emptyTask);
+      setIsModalOpen(false);
+      setMessage('Task assigned successfully.');
+      await fetchWorkspace({ silent: true });
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Unable to save this task');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateTask = async (task, patch) => {
+    const nextPatch = { ...patch };
+    if (nextPatch.progress !== undefined) nextPatch.progress = clampProgress(nextPatch.progress);
+    if (nextPatch.status === 'Complete' && nextPatch.progress === undefined) nextPatch.progress = 100;
+    if (nextPatch.status && nextPatch.status !== 'Complete' && task.progress === 100 && nextPatch.progress === undefined) {
+      nextPatch.progress = 80;
+    }
+
+    try {
+      const response = await updateBusinessResource('project-tasks', task._id, nextPatch);
+      const updatedTask = response.item || response;
+      setTasks((current) => current.map((item) => (item._id === task._id ? updatedTask : item)));
+      setMessage('Task updated.');
+      setError('');
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Unable to update task');
+    }
+  };
+
+  const startTaskDrag = (event, task) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', task._id);
+    setDraggedTaskId(task._id);
+    setActiveDropStatus(task.status);
+  };
+
+  const finishTaskDrag = () => {
+    setDraggedTaskId('');
+    setActiveDropStatus('');
+  };
+
+  const handleStatusDragOver = (event, status) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setActiveDropStatus(status);
+  };
+
+  const dropTaskOnStatus = async (event, status) => {
+    event.preventDefault();
+    const taskId = event.dataTransfer.getData('text/plain') || draggedTaskId;
+    const task = tasks.find((item) => item._id === taskId);
+    finishTaskDrag();
+    if (!task || task.status === status) return;
+    await updateTask(task, { status });
+  };
+
+  const removeTask = async (task) => {
+    try {
+      await deleteBusinessResource('project-tasks', task._id);
+      setTasks((current) => current.filter((item) => item._id !== task._id));
+      setMessage('Task removed.');
+      setError('');
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Unable to remove task');
+    }
+  };
+
   const downloadTaskCsv = () => {
-    const headings = ['Client', 'Company', 'Owner', 'Status', 'Priority', 'Phone', 'Email', 'City', 'Dataset', 'Remark'];
+    const headings = ['Task', 'Project', 'Assignee', 'Email', 'Team', 'Due', 'Status', 'Priority', 'Progress', 'Dependency', 'Milestone'];
     const rows = filteredTasks.map((task) => [
-      task.clientName,
-      task.companyName,
-      task.employeeName,
+      task.name,
+      task.projectName || projectById[String(task.project)]?.name || 'General Task',
+      task.assignee,
+      task.assigneeEmail,
+      task.team,
+      task.due,
       task.status,
-      getTaskPriority(task.status),
-      task.phone,
-      task.email,
-      task.city,
-      task.datasetName,
-      task.remark,
+      task.priority,
+      `${task.progress || 0}%`,
+      task.dependency,
+      task.milestone ? 'Yes' : 'No',
     ]);
     const csv = [headings, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'task-queue.csv';
+    link.download = 'employee-tasks.csv';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -237,8 +374,10 @@ const AdminTasks = () => {
     return (
       <div className="space-y-4">
         <div className="h-24 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm" />
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[1, 2, 3, 4].map((item) => <div key={item} className="h-28 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm" />)}
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((item) => (
+            <div key={item} className="h-28 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm" />
+          ))}
         </div>
         <div className="h-96 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm" />
       </div>
@@ -246,319 +385,355 @@ const AdminTasks = () => {
   }
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-5">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
-          <span className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 11 12 14 22 4" />
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-            </svg>
+          <span className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+            <ListTodo className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-xs font-semibold text-slate-500">Team task control</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-950">Tasks</h1>
-              <select
-                value={activeFilter}
-                onChange={(event) => setActiveFilter(event.target.value)}
-                className="rounded-full border border-transparent bg-transparent py-1 pl-2 pr-7 text-sm font-bold text-blue-700 outline-none hover:border-slate-300"
-              >
-                {filterOptions.map((filter) => <option key={filter.id} value={filter.id}>{filter.label}</option>)}
-              </select>
-            </div>
-            <p className="mt-4 text-xs font-medium text-slate-500">
-              {filteredTasks.length} tasks - {filteredEmployees.length} team members - Updated a few seconds ago
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Employee task control</p>
+            <h1 className="text-2xl font-bold text-slate-950">Tasks</h1>
+            <p className="mt-2 max-w-3xl text-sm font-medium text-slate-500">
+              Project and team tasks for employees. Sales import data remains in Clients/Sales; this section is for internal execution.
             </p>
           </div>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <label className="relative block w-full sm:w-80">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
-              <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="2">
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-3.5-3.5" />
-              </svg>
-            </span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search this list..."
+              placeholder="Search tasks, projects, owners..."
               className="h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </label>
-          <button type="button" title="Refresh" onClick={() => fetchSummary({ silent: true })} className={iconButtonClass}>
-            <svg viewBox="0 0 24 24" className={`${iconClass} ${isRefreshing ? 'animate-spin' : ''}`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-              <path d="M3 21v-5h5" />
-              <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-              <path d="M21 3v5h-5" />
-            </svg>
+          <button type="button" onClick={openTaskModal} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700">
+            <Plus className="h-4 w-4" />
+            Assign Task
           </button>
-          <button type="button" title="Export task queue" onClick={downloadTaskCsv} className={iconButtonClass}>
-            <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3v12" />
-              <path d="m7 10 5 5 5-5" />
-              <path d="M4 21h16" />
-            </svg>
+          <button type="button" title="Refresh" onClick={() => fetchWorkspace({ silent: true })} className={iconButtonClass}>
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
+          <button type="button" title="Export tasks" onClick={downloadTaskCsv} className={iconButtonClass}>
+            <Download className="h-4 w-4" />
           </button>
         </div>
       </section>
 
-      {error && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
-          {error}
-        </p>
+      {(message || error) && (
+        <div className={`rounded-lg border px-4 py-3 text-sm font-bold ${
+          error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        }`}
+        >
+          {error || message}
+        </div>
       )}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {totalsCards.map((card) => (
-          <article key={card.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${card.tone}`}>
-                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {card.icon}
-                </svg>
-              </span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                Live
-              </span>
-            </div>
-            <p className="mt-3 text-2xl font-bold text-slate-950">{card.value}</p>
-            <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{card.label}</p>
-            <p className="mt-1 text-xs font-medium text-slate-500">{card.copy}</p>
-          </article>
-        ))}
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {metricCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <article key={card.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${card.tone}`}>
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  Live
+                </span>
+              </div>
+              <p className="mt-3 text-2xl font-bold text-slate-950">{card.value}</p>
+              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{card.label}</p>
+              <p className="mt-1 text-xs font-medium text-slate-500">{card.copy}</p>
+            </article>
+          );
+        })}
+      </section>
+
+      <section className="rounded-md border border-slate-300 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-300 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-950">Task Register</h2>
+            <p className="mt-1 text-xs font-medium text-slate-500">Assign employee work, update progress, and track dependencies.</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              value={ownerFilter}
+              onChange={(event) => setOwnerFilter(event.target.value)}
+              className="h-9 rounded-lg border border-slate-300 bg-white px-3 pr-8 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">All assignees</option>
+              {employees.map((employee) => (
+                <option key={employee._id || employee.email} value={employee.email || employee.name}>
+                  {employee.name || employee.email}
+                </option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="h-9 rounded-lg border border-slate-300 bg-white px-3 pr-8 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">All statuses</option>
+              {taskStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[78rem] w-full table-fixed border-collapse text-left text-sm">
+            <thead className="bg-slate-50 text-slate-700">
+              <tr>
+                <th className="w-72 border-b border-r border-slate-300 px-4 py-2 font-bold">Task</th>
+                <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">Assigned</th>
+                <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">Due</th>
+                <th className="w-44 border-b border-r border-slate-300 px-4 py-2 font-bold">Status</th>
+                <th className="w-44 border-b border-r border-slate-300 px-4 py-2 font-bold">Progress</th>
+                <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">Priority</th>
+                <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">Dependency</th>
+                <th className="w-20 border-b border-slate-300 px-4 py-2 text-right font-bold">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTasks.map((task) => {
+                const projectName = task.projectName || projectById[String(task.project)]?.name || 'General Task';
+                return (
+                  <tr key={task._id} className="bg-white transition hover:bg-blue-50/40">
+                    <td className="border-b border-r border-slate-200 px-4 py-3">
+                      <p className="truncate font-bold text-slate-950">{task.name}</p>
+                      <p className="mt-0.5 truncate text-xs font-semibold text-blue-700">{projectName}</p>
+                      {task.milestone && (
+                        <span className="mt-2 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                          Milestone
+                        </span>
+                      )}
+                    </td>
+                    <td className="border-b border-r border-slate-200 px-4 py-3">
+                      <div className="flex max-w-full items-center gap-2">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">
+                          {getInitials(task.assignee)}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold text-slate-800">{task.assignee || 'Unassigned'}</span>
+                          <span className="block truncate text-xs text-slate-500">{task.team || task.assigneeEmail || 'Team'}</span>
+                        </span>
+                      </div>
+                    </td>
+                    <td className="border-b border-r border-slate-200 px-4 py-3">
+                      <span className={`font-bold ${task.status !== 'Complete' && task.due && task.due < todayKey ? 'text-red-700' : 'text-slate-700'}`}>
+                        {formatDate(task.due)}
+                      </span>
+                    </td>
+                    <td className="border-b border-r border-slate-200 px-4 py-3">
+                      <select
+                        value={task.status}
+                        onChange={(event) => updateTask(task, { status: event.target.value })}
+                        className={`w-full rounded-lg border px-2 py-1.5 text-xs font-bold outline-none ${statusTone[task.status] || statusTone.Backlog}`}
+                      >
+                        {taskStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                      </select>
+                    </td>
+                    <td className="border-b border-r border-slate-200 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={task.progress || 0}
+                          onChange={(event) => updateTask(task, { progress: event.target.value })}
+                          className="h-9 w-20 rounded-lg border border-slate-300 px-2 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                        <div className="h-2 flex-1 rounded-full bg-slate-100">
+                          <div className="h-2 rounded-full bg-blue-600" style={{ width: `${clampProgress(task.progress)}%` }} />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="border-b border-r border-slate-200 px-4 py-3">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${priorityTone[task.priority] || priorityTone.Medium}`}>
+                        {task.priority || 'Medium'}
+                      </span>
+                    </td>
+                    <td className="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
+                      <span className="block truncate">{task.dependency || '-'}</span>
+                    </td>
+                    <td className="border-b border-slate-200 px-4 py-3 text-right">
+                      <button type="button" onClick={() => removeTask(task)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100" title="Delete task">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredTasks.length === 0 && (
+                <tr>
+                  <td colSpan="8" className="h-64 px-4 py-16 text-center">
+                    <p className="text-base font-bold text-slate-700">No employee tasks found</p>
+                    <p className="mt-2 text-sm text-slate-500">Use Assign Task to create project or general work for the team.</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section>
-        <article className="overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-300 bg-white px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-950">Task Queue</h2>
-              <p className="mt-1 text-xs font-medium text-slate-500">Assigned account rows that need sales activity.</p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <select
-                value={taskOwnerFilter}
-                onChange={(event) => setTaskOwnerFilter(event.target.value)}
-                className="h-9 rounded-lg border border-slate-300 bg-white px-3 pr-8 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              >
-                <option value="all">All owners</option>
-                {employees.map((employee) => (
-                  <option key={employee._id} value={employee._id}>{employee.name || employee.email}</option>
-                ))}
-              </select>
-              <select
-                value={taskStatusFilter}
-                onChange={(event) => setTaskStatusFilter(event.target.value)}
-                className="h-9 rounded-lg border border-slate-300 bg-white px-3 pr-8 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              >
-                {taskStatusOptions.map((status) => (
-                  <option key={status} value={status}>{status === 'all' ? 'All statuses' : status}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[76rem] w-full table-fixed border-collapse text-left text-sm">
-              <thead className="bg-slate-50 text-slate-700">
-                <tr>
-                  <th className="w-64 border-b border-r border-slate-300 px-4 py-2 font-bold">Client</th>
-                  <th className="w-48 border-b border-r border-slate-300 px-4 py-2 font-bold">Owner</th>
-                  <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">Status</th>
-                  <th className="w-28 border-b border-r border-slate-300 px-4 py-2 font-bold">Priority</th>
-                  <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">Contact</th>
-                  <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">Dataset</th>
-                  <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">Remark</th>
-                  <th className="w-24 border-b border-slate-300 px-4 py-2 text-right font-bold">Open</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTasks.slice(0, 50).map((task) => (
-                  <tr key={task._id} className="bg-white transition hover:bg-blue-50/40">
-                    <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <p className="truncate font-bold text-blue-700">{task.clientName || task.companyName || `Row ${task.serialNumber}`}</p>
-                      <p className="mt-0.5 truncate text-xs font-medium text-slate-500">{task.companyName || task.city || `Row ${task.serialNumber}`}</p>
-                    </td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <div className="flex max-w-full items-center gap-2 text-left">
-                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${getAvatarClass(task.employeeName)}`}>
-                          {getInitials(task.employeeName)}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate font-semibold text-slate-800">{task.employeeName}</span>
-                          <span className="block truncate text-xs text-slate-500">{task.employeePosition || 'Team member'}</span>
-                        </span>
-                      </div>
-                    </td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getStatusClass(task.status)}`}>
-                        {task.status || 'Pending'}
-                      </span>
-                    </td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3 text-sm font-bold text-slate-700">{getTaskPriority(task.status)}</td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <p className="truncate font-semibold text-slate-700">{task.phone || '-'}</p>
-                      <p className="truncate text-xs text-slate-500">{task.email || task.website || ''}</p>
-                    </td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <p className="truncate font-semibold text-slate-700">{task.datasetName}</p>
-                      <p className="truncate text-xs text-slate-500">{task.year || 'No year'} - row {task.serialNumber}</p>
-                    </td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
-                      <span className="block truncate">{task.remark || '-'}</span>
-                    </td>
-                    <td className="border-b border-slate-200 px-4 py-3 text-right">
-                      <Link
-                        to={`/dashboard/clients/${task.datasetId}`}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100"
-                        title="Open dataset"
-                      >
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M7 17 17 7" />
-                          <path d="M7 7h10v10" />
-                        </svg>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-                {filteredTasks.length === 0 && (
-                  <tr>
-                    <td colSpan="8" className="h-72 px-4 py-16 text-center">
-                      <div className="mx-auto max-w-sm">
-                        <p className="text-base font-bold text-slate-700">No tasks found</p>
-                        <p className="mt-2 text-sm text-slate-500">Assigned rows will appear here after accounts are assigned to employees.</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {filteredTasks.length > 50 && (
-            <div className="border-t border-slate-200 px-4 py-2 text-xs font-semibold text-slate-500">
-              Showing 50 of {filteredTasks.length} tasks. Use search or filters to narrow the list.
-            </div>
-          )}
-        </article>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <article className="overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm">
+        <article className="rounded-md border border-slate-300 bg-white shadow-sm">
           <div className="border-b border-slate-300 px-4 py-3">
-            <h2 className="text-base font-bold text-slate-950">Employee Workload</h2>
-            <p className="mt-1 text-xs font-medium text-slate-500">Assigned rows, activity pressure, and meeting load.</p>
+            <h2 className="text-base font-bold text-slate-950">Workflow Board</h2>
+            <p className="mt-1 text-xs font-medium text-slate-500">Same flow as the business OS task board, backed by the CRM database.</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[48rem] w-full table-fixed border-collapse text-left text-sm">
-              <thead className="bg-slate-50 text-slate-700">
-                <tr>
-                  <th className="w-56 border-b border-r border-slate-300 px-4 py-2 font-bold">Employee</th>
-                  <th className="w-24 border-b border-r border-slate-300 px-4 py-2 font-bold">Assigned</th>
-                  <th className="w-24 border-b border-r border-slate-300 px-4 py-2 font-bold">Follow</th>
-                  <th className="w-24 border-b border-r border-slate-300 px-4 py-2 font-bold">Pending</th>
-                  <th className="w-28 border-b border-r border-slate-300 px-4 py-2 font-bold">Meetings</th>
-                  <th className="w-36 border-b border-slate-300 px-4 py-2 font-bold">Next Step</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEmployees.map((employee) => (
-                  <tr key={employee._id} className="bg-white transition hover:bg-blue-50/40">
-                    <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <div className="flex max-w-full items-center gap-3 text-left">
-                        {employee.imageUrl ? (
-                          <img src={getAssetUrl(employee.imageUrl)} alt={employee.name} className="h-9 w-9 shrink-0 rounded-full object-cover" />
-                        ) : (
-                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${getAvatarClass(employee.name)}`}>
-                            {getInitials(employee.name)}
-                          </span>
-                        )}
-                        <span className="min-w-0">
-                          <span className="block truncate font-bold text-slate-900">{employee.name || 'Employee'}</span>
-                          <span className="block truncate text-xs text-slate-500">{employee.position || employee.email}</span>
+          <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-5">
+            {groupedTasks.map((column) => (
+              <div
+                key={column.status}
+                onDragEnter={(event) => handleStatusDragOver(event, column.status)}
+                onDragOver={(event) => handleStatusDragOver(event, column.status)}
+                onDrop={(event) => dropTaskOnStatus(event, column.status)}
+                className={`min-h-72 rounded-md border bg-slate-50 transition ${
+                  draggedTaskId && activeDropStatus === column.status
+                    ? 'border-blue-400 bg-blue-50/70 ring-2 ring-blue-100'
+                    : 'border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                  <span className="text-sm font-bold text-slate-800">{column.status}</span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-500">{column.tasks.length}</span>
+                </div>
+                <div className="space-y-2 p-3">
+                  {column.tasks.map((task) => (
+                    <div
+                      key={task._id}
+                      draggable
+                      onDragStart={(event) => startTaskDrag(event, task)}
+                      onDragEnd={finishTaskDrag}
+                      title="Move task"
+                      className={`cursor-grab select-none rounded-md border border-slate-200 bg-white p-3 shadow-sm transition active:cursor-grabbing ${
+                        draggedTaskId === task._id ? 'opacity-50 ring-2 ring-blue-200' : 'hover:border-blue-200 hover:shadow-md'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                          <p className="min-w-0 text-sm font-bold text-slate-950">{task.name}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${priorityTone[task.priority] || priorityTone.Medium}`}>
+                          {task.priority || 'Medium'}
                         </span>
                       </div>
-                    </td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3 font-bold text-slate-800">{employee.assignedCount || 0}</td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3 font-bold text-violet-700">{employee.followUpCount || 0}</td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3 font-bold text-amber-700">{employee.pendingCallCount || 0}</td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3 font-bold text-emerald-700">
-                      {employee.meetingCount || 0}
-                      <span className="ml-1 text-xs font-medium text-slate-500">({employee.upcomingMeetingCount || 0})</span>
-                    </td>
-                    <td className="border-b border-slate-200 px-4 py-3">
-                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{getNextStep(employee)}</span>
-                    </td>
-                  </tr>
-                ))}
-                {filteredEmployees.length === 0 && (
-                  <tr>
-                    <td colSpan="6" className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No employees match this view.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article className="overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-300 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-950">Meeting Timeline</h2>
-              <p className="mt-1 text-xs font-medium text-slate-500">Employee meetings created from task work.</p>
-            </div>
-            <div className="flex rounded-full border border-slate-300 bg-white p-1">
-              {meetingFilters.map((filter) => (
-                <button
-                  key={filter.id}
-                  type="button"
-                  onClick={() => setMeetingFilter(filter.id)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${meetingFilter === filter.id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="max-h-[28rem] overflow-auto">
-            <table className="min-w-[44rem] w-full table-fixed border-collapse text-left text-sm">
-              <thead className="sticky top-0 bg-slate-50 text-slate-700">
-                <tr>
-                  <th className="w-44 border-b border-r border-slate-300 px-4 py-2 font-bold">When</th>
-                  <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">Client</th>
-                  <th className="w-44 border-b border-r border-slate-300 px-4 py-2 font-bold">Owner</th>
-                  <th className="w-28 border-b border-r border-slate-300 px-4 py-2 font-bold">Mode</th>
-                  <th className="w-44 border-b border-slate-300 px-4 py-2 font-bold">Place</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMeetings.map((meeting) => (
-                  <tr key={meeting._id} className="bg-white transition hover:bg-blue-50/40">
-                    <td className="border-b border-r border-slate-200 px-4 py-3 font-semibold text-slate-700">{formatDateTime(meeting.meetingDate, meeting.meetingTime)}</td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <p className="truncate font-bold text-slate-900">{meeting.clientName || meeting.companyName || meeting.meetingTitle}</p>
-                      <p className="truncate text-xs text-slate-500">{meeting.datasetName}</p>
-                    </td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3 font-semibold text-slate-700">{meeting.employee?.name || 'Employee'}</td>
-                    <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{meeting.meetingMode}</span>
-                    </td>
-                    <td className="border-b border-slate-200 px-4 py-3 text-slate-600">{meeting.platformOrLocation || '-'}</td>
-                  </tr>
-                ))}
-                {filteredMeetings.length === 0 && (
-                  <tr>
-                    <td colSpan="5" className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No meetings in this view.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      <p className="mt-1 truncate text-xs font-semibold text-blue-700">
+                        {task.projectName || projectById[String(task.project)]?.name || 'General Task'}
+                      </p>
+                      <div className="mt-3 flex items-center justify-between gap-2 text-xs font-semibold text-slate-500">
+                        <span>{task.assignee || 'Unassigned'}</span>
+                        <span>{formatDate(task.due)}</span>
+                      </div>
+                      <div className="mt-3 h-2 rounded-full bg-slate-100">
+                        <div className="h-2 rounded-full bg-blue-600" style={{ width: `${clampProgress(task.progress)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                  {column.tasks.length === 0 && (
+                    <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-6 text-center text-xs font-semibold text-slate-500">
+                      No tasks
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </article>
       </section>
+
+      {isModalOpen && (
+        <Modal title="Assign Employee Task" onClose={() => setIsModalOpen(false)}>
+          <form onSubmit={submitTask} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1 md:col-span-2">
+                <span className={labelClass}>Task name</span>
+                <input
+                  required
+                  value={taskForm.name}
+                  onChange={(event) => updateForm('name', event.target.value)}
+                  className={inputClass}
+                  placeholder="Prepare client onboarding checklist"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Project</span>
+                <select value={taskForm.project} onChange={(event) => updateForm('project', event.target.value)} className={inputClass}>
+                  <option value="">General Task</option>
+                  {projects.map((project) => (
+                    <option key={project._id} value={project._id}>{project.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Assignee</span>
+                <select value={taskForm.assignee} onChange={(event) => updateForm('assignee', event.target.value)} className={inputClass}>
+                  <option value="">Unassigned</option>
+                  {employees.map((employee) => (
+                    <option key={employee._id || employee.email} value={employee._id || employee.email}>
+                      {employee.name || employee.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Team</span>
+                <select value={taskForm.team} onChange={(event) => updateForm('team', event.target.value)} className={inputClass}>
+                  {teamOptions.map((team) => <option key={team} value={team}>{team}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Due date</span>
+                <input type="date" value={taskForm.due} onChange={(event) => updateForm('due', event.target.value)} className={inputClass} />
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Status</span>
+                <select value={taskForm.status} onChange={(event) => updateForm('status', event.target.value)} className={inputClass}>
+                  {taskStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Priority</span>
+                <select value={taskForm.priority} onChange={(event) => updateForm('priority', event.target.value)} className={inputClass}>
+                  {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Progress</span>
+                <input type="number" min="0" max="100" value={taskForm.progress} onChange={(event) => updateForm('progress', event.target.value)} className={inputClass} />
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Dependency</span>
+                <input value={taskForm.dependency} onChange={(event) => updateForm('dependency', event.target.value)} className={inputClass} placeholder="Design approval, content, payment..." />
+              </label>
+              <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={taskForm.milestone}
+                  onChange={(event) => updateForm('milestone', event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm font-bold text-slate-700">Mark as milestone</span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+              <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70">
+                {isSaving ? 'Saving...' : 'Assign Task'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 };

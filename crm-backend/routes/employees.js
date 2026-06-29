@@ -11,6 +11,11 @@ const publicEmployee = (employee) => ({
   name: employee.name,
   email: employee.email,
   role: employee.role,
+  crmRole: employee.crmRole || employee.role,
+  department: employee.officeModule || employee.department || '',
+  officeModule: employee.officeModule || employee.department || '',
+  team: employee.team || '',
+  permissions: employee.permissions || [],
   phone: employee.phone || '',
   address: employee.address || '',
   imageUrl: employee.imageUrl || '',
@@ -63,7 +68,7 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // Register new employee
 router.post('/register', authMiddleware, upload.single('image'), async (req, res) => {
-  const { name, email, password, phone, address, position } = req.body;
+  const { name, email, password, phone, address, position, department, officeModule, team, crmRole, permissions } = req.body;
 
   try {
     if (req.user.role !== 'admin') {
@@ -97,6 +102,11 @@ router.post('/register', authMiddleware, upload.single('image'), async (req, res
       email: normalizedEmail,
       password: hashedPassword,
       role: 'employee',
+      crmRole: crmRole || 'employee',
+      department: (officeModule || department)?.trim() || 'Sales',
+      officeModule: (officeModule || department)?.trim() || 'Sales',
+      team: team?.trim() || '',
+      permissions: Array.isArray(permissions) ? permissions : String(permissions || '').split(',').map((item) => item.trim()).filter(Boolean),
       phone: phone.trim(),
       address: address.trim(),
       imageUrl: req.file ? req.file.path : null,
@@ -138,7 +148,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 // Update an employee by ID
 router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
-  const { name, email, password, phone, address, position } = req.body;
+  const { name, email, password, phone, address, position, department, officeModule, team, crmRole, permissions } = req.body;
 
   try {
     if (req.user.role !== 'admin') {
@@ -175,6 +185,15 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
     employee.phone = phone?.trim() || employee.phone;
     employee.address = address?.trim() || employee.address;
     employee.position = position?.trim() || employee.position;
+    employee.department = (officeModule || department)?.trim() || employee.department;
+    employee.officeModule = (officeModule || department)?.trim() || employee.officeModule || employee.department;
+    employee.team = team?.trim() || employee.team;
+    if (crmRole) employee.crmRole = crmRole;
+    if (permissions !== undefined) {
+      employee.permissions = Array.isArray(permissions)
+        ? permissions
+        : String(permissions || '').split(',').map((item) => item.trim()).filter(Boolean);
+    }
 
     if (password) {
       if (password.length < 8) {

@@ -49,6 +49,7 @@ const EmployeeDashboard = () => {
   const [assignedRows, setAssignedRows] = useState([]);
   const [assignedDatasets, setAssignedDatasets] = useState([]);
   const [meetings, setMeetings] = useState([]);
+  const [projectTasks, setProjectTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -65,17 +66,19 @@ const EmployeeDashboard = () => {
 
     try {
       const headers = getEmployeeHeaders();
-      const [employeeResponse, rowsResponse, datasetsResponse, meetingsResponse] = await Promise.all([
+      const [employeeResponse, rowsResponse, datasetsResponse, meetingsResponse, projectTaskResponse] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/employees/me`, { headers }),
         axios.get(`${API_BASE_URL}/api/tasks/employee/assigned-rows`, { headers }),
         axios.get(`${API_BASE_URL}/api/client-datasets/assigned/me`, { headers }),
         axios.get(`${API_BASE_URL}/api/tasks/meetings/me`, { headers }),
+        axios.get(`${API_BASE_URL}/api/business/project-tasks`, { headers }),
       ]);
 
       setEmployee(employeeResponse.data);
       setAssignedRows(rowsResponse.data);
       setAssignedDatasets(datasetsResponse.data);
       setMeetings(meetingsResponse.data);
+      setProjectTasks(projectTaskResponse.data || []);
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Unable to load dashboard');
     } finally {
@@ -143,7 +146,7 @@ const EmployeeDashboard = () => {
               Open data
             </Link>
             <Link to="/employee-dashboard/tasks" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15">
-              Schedule meeting
+              Open tasks
             </Link>
           </div>
         </div>
@@ -164,11 +167,11 @@ const EmployeeDashboard = () => {
           icon={<><path d="M4 4h16v16H4z" /><path d="M4 10h16" /><path d="M10 4v16" /></>}
         />
         <StatCard
-          label="Pending calls"
-          value={pendingCount}
-          note="Need first update"
+          label="My open tasks"
+          value={projectTasks.filter((task) => task.status !== 'Complete').length}
+          note={`${projectTasks.length} total assigned`}
           tone="bg-amber-50 text-amber-600"
-          icon={<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.4 2.1L8 9.7a16 16 0 0 0 6.3 6.3l1.3-1.3a2 2 0 0 1 2.1-.4c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2Z" />}
+          icon={<><path d="M9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>}
         />
         <StatCard
           label="Follow ups"
