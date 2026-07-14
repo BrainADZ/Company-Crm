@@ -10,57 +10,11 @@ const DocumentRecord = require('../models/DocumentRecord');
 const CommunicationLog = require('../models/CommunicationLog');
 const RolePermission = require('../models/RolePermission');
 const OfficeStructure = require('../models/OfficeStructure');
+const Community = require('../models/Community');
 const authMiddleware = require('../middleware/authMiddleware');
+const { MODULES, UNIVERSAL_COMMUNITIES, DEFAULT_ROLES, COMMUNITY_KEYS } = require('../config/accessControl');
 
 const router = express.Router();
-
-const MODULES = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'sales', label: 'Sales CRM' },
-  { key: 'communication', label: 'Communication Hub' },
-  { key: 'marketing', label: 'Marketing Hub' },
-  { key: 'accounting', label: 'Accounting' },
-  { key: 'projects', label: 'Project Management' },
-  { key: 'documents', label: 'Documents' },
-  { key: 'tasks', label: 'Tasks' },
-  { key: 'users', label: 'User Management' },
-  { key: 'permissions', label: 'Permissions' },
-  { key: 'settings', label: 'Settings' },
-];
-
-const DEFAULT_ROLES = [
-  { roleKey: 'admin', roleLabel: 'Admin', modules: MODULES.map((module) => module.key), locked: true },
-  {
-    roleKey: 'sales_manager',
-    roleLabel: 'Sales Manager',
-    modules: ['dashboard', 'sales', 'communication', 'accounting', 'documents', 'tasks', 'settings'],
-  },
-  {
-    roleKey: 'marketing_manager',
-    roleLabel: 'Marketing Manager',
-    modules: ['dashboard', 'marketing', 'communication', 'documents', 'settings'],
-  },
-  {
-    roleKey: 'accounts_manager',
-    roleLabel: 'Accounts Manager',
-    modules: ['dashboard', 'accounting', 'documents', 'settings'],
-  },
-  {
-    roleKey: 'project_manager',
-    roleLabel: 'Project Manager',
-    modules: ['dashboard', 'projects', 'documents', 'communication', 'tasks', 'settings'],
-  },
-  {
-    roleKey: 'employee',
-    roleLabel: 'Employee',
-    modules: ['dashboard', 'sales', 'tasks', 'documents', 'settings'],
-  },
-  {
-    roleKey: 'client_viewer',
-    roleLabel: 'Client Viewer',
-    modules: ['dashboard', 'projects', 'documents'],
-  },
-];
 
 const projectStages = [
   'Requirement Received',
@@ -151,10 +105,22 @@ const defaultCommunications = [
 ];
 
 const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Access denied: Admins only' });
+  if (req.user.crmRole !== 'super_admin') {
+    return res.status(403).json({ message: 'Access denied: Super Admin only' });
   }
   return next();
+};
+
+const hasModuleAccess = async (user, moduleKey) => {
+  if (user.crmRole === 'super_admin') return true;
+  if ((user.permissions || []).includes(moduleKey)) return true;
+  const role = await RolePermission.findOne({ roleKey: user.crmRole }).select('modules');
+  return Boolean(role?.modules?.includes(moduleKey));
+};
+
+const requireModule = (moduleKey) => async (req, res, next) => {
+  if (await hasModuleAccess(req.user, moduleKey)) return next();
+  return res.status(403).json({ message: `Access denied: ${moduleKey} permission required` });
 };
 
 const normalizeCell = (cell) => {
@@ -201,10 +167,23 @@ const toCurrencyNumber = (value) => Number(value || 0);
 const formatCodePrefix = (type) => (type === 'invoice' ? 'INV' : 'QT');
 
 const ensureDefaults = async (createdBy) => {
-  const roleCount = await RolePermission.countDocuments();
-  if (!roleCount) {
-    await RolePermission.insertMany(DEFAULT_ROLES);
-  }
+  await Promise.all(DEFAULT_ROLES.map((role) => RolePermission.updateOne(
+    { roleKey: role.roleKey },
+    { $setOnInsert: role },
+    { upsert: true },
+  )));
+  await RolePermission.deleteOne({ roleKey: 'admin' });
+
+  await Promise.all(UNIVERSAL_COMMUNITIES.map((community) => Community.updateOne(
+    { key: community.key },
+    { $set: { ...community, active: true }, $setOnInsert: { createdBy } },
+    { upsert: true },
+  )));
+
+  await User.updateMany(
+    { role: 'admin', $or: [{ crmRole: { $ne: 'super_admin' } }, { communities: { $not: { $all: COMMUNITY_KEYS } } }] },
+    { $set: { crmRole: 'super_admin', communities: COMMUNITY_KEYS } },
+  );
 
   if (await OfficeStructure.countDocuments() === 0) {
     await OfficeStructure.insertMany([
@@ -434,7 +413,7 @@ const resourceConfig = {
 
 router.use(authMiddleware);
 
-router.get('/summary', async (req, res) => {
+router.get('/summary', requireModule('dashboard'), async (req, res) => {
   try {
     await ensureDefaults(req.user.id);
     const summary = await buildSummary();
@@ -448,8 +427,12 @@ router.get('/summary', async (req, res) => {
 router.get('/permissions', requireAdmin, async (req, res) => {
   try {
     await ensureDefaults(req.user.id);
-    const roles = await RolePermission.find().sort({ roleLabel: 1 });
-    return res.json({ modules: MODULES, roles });
+    const [roles, communities, superAdmins] = await Promise.all([
+      RolePermission.find().sort({ locked: -1, roleLabel: 1 }),
+      Community.find({ active: true }).sort({ createdAt: 1 }),
+      User.find({ role: 'admin', crmRole: 'super_admin' }).select('name email crmRole communities'),
+    ]);
+    return res.json({ modules: MODULES, roles, communities, superAdmins });
   } catch (error) {
     console.error('Error fetching permissions:', error);
     return res.status(500).json({ message: 'Server error' });
@@ -552,6 +535,18 @@ router.get('/:resource', async (req, res) => {
   try {
     const config = resourceConfig[req.params.resource];
     if (!config) return res.status(404).json({ message: 'Resource not found' });
+
+    const resourceModules = {
+      campaigns: 'marketing',
+      finance: 'accounting',
+      projects: 'projects',
+      'project-tasks': 'tasks',
+      documents: 'documents',
+      communications: 'communication',
+    };
+    if (!(await hasModuleAccess(req.user, resourceModules[req.params.resource]))) {
+      return res.status(403).json({ message: 'Access denied: Module permission required' });
+    }
 
     await ensureDefaults(req.user.id);
     let query = {};

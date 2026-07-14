@@ -1,52 +1,72 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const dotenv = require('dotenv');
 const User = require('../models/User');
-require('dotenv').config();
+const Community = require('../models/Community');
+const RolePermission = require('../models/RolePermission');
+const { COMMUNITY_KEYS, DEFAULT_ROLES, UNIVERSAL_COMMUNITIES } = require('../config/accessControl');
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1); // Exit if unable to connect to MongoDB
-  });
+dotenv.config();
 
-// Function to add an admin user
-const addAdminUser = async () => {
-  const email = process.env.ADMIN_EMAIL || 'admin@example.com'; // Default admin email
-  const password = process.env.ADMIN_PASSWORD || 'admin12345'; // Default admin password
+const seedSuperAdmin = async () => {
+  const mongoUri = process.env.MONGODB_URI;
+  const email = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = String(process.env.ADMIN_PASSWORD || '');
+  const name = String(process.env.ADMIN_NAME || 'Super Admin').trim();
 
-  try {
-    // Check if the admin user already exists
-    const user = await User.findOne({ email });
-    if (user) {
-      console.log('Admin user already exists');
-      return;
-    }
+  if (!mongoUri) throw new Error('MONGODB_URI is required in crm-backend/.env');
+  if (!email) throw new Error('ADMIN_EMAIL is required in crm-backend/.env');
+  if (password.length < 8) throw new Error('ADMIN_PASSWORD must be at least 8 characters');
 
-    // Create new admin user
-    const hashedPassword = await bcrypt.hash(password, 10); // Hash the password
-    const newUser = new User({
-      name: 'Admin User',
-      email,
-      password: hashedPassword,
-      role: 'admin',
-    });
+  await mongoose.connect(mongoUri);
 
-    // Save the user to the database
-    await newUser.save();
-    console.log(`Admin user created successfully:
-    Email: ${email}
-    Password: ${password}`);
-  } catch (error) {
-    console.error('Error creating admin user:', error);
-  } finally {
-    mongoose.connection.close();
+  await Promise.all(DEFAULT_ROLES.map((role) => RolePermission.updateOne(
+    { roleKey: role.roleKey },
+    role.locked ? { $set: role } : { $setOnInsert: role },
+    { upsert: true },
+  )));
+  await RolePermission.deleteOne({ roleKey: 'admin' });
+
+  await Promise.all(UNIVERSAL_COMMUNITIES.map((community) => Community.updateOne(
+    { key: community.key },
+    { $set: { ...community, active: true } },
+    { upsert: true },
+  )));
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  const existingUser = await User.findOne({ email });
+
+  if (existingUser && existingUser.role !== 'admin') {
+    throw new Error(`A non-admin user already exists with email ${email}`);
   }
+
+  const user = await User.findOneAndUpdate(
+    { email },
+    {
+      $set: {
+        name,
+        password: passwordHash,
+        role: 'admin',
+        crmRole: 'super_admin',
+        communities: COMMUNITY_KEYS,
+        permissions: [],
+        passwordChangedAt: new Date(),
+      },
+    },
+    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
+  );
+
+  console.log('Super Admin seed completed successfully.');
+  console.log(`Email: ${user.email}`);
+  console.log(`Communities: ${COMMUNITY_KEYS.join(', ')}`);
+  console.log('Password was read from ADMIN_PASSWORD and has been securely hashed.');
 };
 
-// Run the function to add the admin user
-addAdminUser();
+seedSuperAdmin()
+  .catch((error) => {
+    console.error(`Super Admin seed failed: ${error.message}`);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await mongoose.connection.close();
+  });

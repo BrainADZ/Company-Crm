@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { CRM_ROLE_KEYS, COMMUNITY_KEYS } = require('../config/accessControl');
 
 const userSchema = new mongoose.Schema({
   name: String,
@@ -7,9 +8,10 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['admin', 'employee'], default: 'employee' },
   crmRole: {
     type: String,
-    enum: ['admin', 'sales_manager', 'marketing_manager', 'accounts_manager', 'project_manager', 'employee', 'client_viewer'],
+    enum: CRM_ROLE_KEYS,
     default: 'employee',
   },
+  communities: [{ type: String, enum: COMMUNITY_KEYS }],
   department: { type: String, default: 'Sales' },
   officeModule: { type: String, default: 'Sales' },
   team: { type: String, default: 'Sales Team' },

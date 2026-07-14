@@ -3,8 +3,25 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
+const { CRM_ROLE_KEYS, COMMUNITY_KEYS } = require('../config/accessControl');
 
 const router = express.Router();
+
+const requireSuperAdmin = (req, res) => {
+  if (req.user.crmRole === 'super_admin') return false;
+  res.status(403).json({ message: 'Access denied: Super Admin only' });
+  return true;
+};
+
+const normalizeList = (value) => {
+  if (Array.isArray(value)) return value.map(String);
+  return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+};
+
+const normalizeCommunities = (value) => {
+  const requested = value === undefined ? COMMUNITY_KEYS : normalizeList(value);
+  return [...new Set(requested.filter((key) => COMMUNITY_KEYS.includes(key)))];
+};
 
 const publicEmployee = (employee) => ({
   _id: employee._id,
@@ -16,6 +33,7 @@ const publicEmployee = (employee) => ({
   officeModule: employee.officeModule || employee.department || '',
   team: employee.team || '',
   permissions: employee.permissions || [],
+  communities: employee.communities || [],
   phone: employee.phone || '',
   address: employee.address || '',
   imageUrl: employee.imageUrl || '',
@@ -54,9 +72,7 @@ const upload = multer({
 // Get all employees
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied: Admins only' });
-    }
+    if (requireSuperAdmin(req, res)) return;
 
     const employees = await User.find({ role: 'employee' }).select('-password -securityAnswerHash').sort({ createdAt: -1 });
     res.json(employees.map(publicEmployee));
@@ -68,11 +84,13 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // Register new employee
 router.post('/register', authMiddleware, upload.single('image'), async (req, res) => {
-  const { name, email, password, phone, address, position, department, officeModule, team, crmRole, permissions } = req.body;
+  const { name, email, password, phone, address, position, department, officeModule, team, crmRole, permissions, communities } = req.body;
 
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied: Admins only' });
+    if (requireSuperAdmin(req, res)) return;
+
+    if (crmRole === 'super_admin' || (crmRole && !CRM_ROLE_KEYS.includes(crmRole))) {
+      return res.status(400).json({ message: 'Invalid employee CRM role' });
     }
 
     // Validate input
@@ -107,6 +125,7 @@ router.post('/register', authMiddleware, upload.single('image'), async (req, res
       officeModule: (officeModule || department)?.trim() || 'Sales',
       team: team?.trim() || '',
       permissions: Array.isArray(permissions) ? permissions : String(permissions || '').split(',').map((item) => item.trim()).filter(Boolean),
+      communities: normalizeCommunities(communities),
       phone: phone.trim(),
       address: address.trim(),
       imageUrl: req.file ? req.file.path : null,
@@ -125,9 +144,7 @@ router.post('/register', authMiddleware, upload.single('image'), async (req, res
 // Delete an employee by ID
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied: Admins only' });
-    }
+    if (requireSuperAdmin(req, res)) return;
 
     const employeeId = req.params.id;
 
@@ -148,11 +165,13 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 // Update an employee by ID
 router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
-  const { name, email, password, phone, address, position, department, officeModule, team, crmRole, permissions } = req.body;
+  const { name, email, password, phone, address, position, department, officeModule, team, crmRole, permissions, communities } = req.body;
 
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied: Admins only' });
+    if (requireSuperAdmin(req, res)) return;
+
+    if (crmRole === 'super_admin' || (crmRole && !CRM_ROLE_KEYS.includes(crmRole))) {
+      return res.status(400).json({ message: 'Invalid employee CRM role' });
     }
 
     // Find the employee by ID
@@ -194,6 +213,7 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
         ? permissions
         : String(permissions || '').split(',').map((item) => item.trim()).filter(Boolean);
     }
+    if (communities !== undefined) employee.communities = normalizeCommunities(communities);
 
     if (password) {
       if (password.length < 8) {

@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { COMMUNITY_KEYS } = require('../config/accessControl');
 
 const router = express.Router();
 const TOKEN_EXPIRES_IN = '7d';
@@ -55,6 +56,11 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ message: 'Access denied: Admins only' });
     }
 
+    if (user.crmRole !== 'super_admin' || COMMUNITY_KEYS.some((key) => !(user.communities || []).includes(key))) {
+      user.crmRole = 'super_admin';
+      user.communities = COMMUNITY_KEYS;
+    }
+
     await recordLogin(user, req);
 
     // Generate JWT for admin
@@ -62,12 +68,14 @@ router.post('/login', async (req, res) => {
       user: {
         id: user._id,
         role: user.role,
+        crmRole: user.crmRole,
+        communities: user.communities,
       },
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: TOKEN_EXPIRES_IN });
 
-    res.json({ token });
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, crmRole: user.crmRole, communities: user.communities } });
   } catch (err) {
     console.error('Error during admin login:', err.message);
     res.status(500).json({ message: 'Server error' });
@@ -99,12 +107,14 @@ router.post('/employee-login', async (req, res) => {
       user: {
         id: employee._id,
         role: employee.role,
+        crmRole: employee.crmRole,
+        communities: employee.communities || [],
       },
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: TOKEN_EXPIRES_IN });
 
-    res.json({ token });
+    res.json({ token, user: { id: employee._id, name: employee.name, email: employee.email, role: employee.role, crmRole: employee.crmRole, communities: employee.communities || [] } });
   } catch (err) {
     console.error('Error during employee login:', err.message);
     res.status(500).json({ message: 'Server error' });
