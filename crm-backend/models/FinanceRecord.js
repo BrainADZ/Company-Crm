@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const financeRecordSchema = new mongoose.Schema({
+  communityKey: { type: String, required: true, default: 'live', index: true },
+  officeModule: { type: String, default: 'Accounts', trim: true, index: true },
+  linkedUserIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'BusinessProject', default: null },
   type: {
     type: String,
     enum: ['quotation', 'invoice'],
@@ -21,6 +25,8 @@ const financeRecordSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+financeRecordSchema.index({ communityKey: 1, type: 1, status: 1 });
 
 financeRecordSchema.virtual('pending').get(function getPending() {
   if (this.type !== 'invoice') return 0;

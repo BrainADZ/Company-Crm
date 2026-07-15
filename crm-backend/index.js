@@ -12,6 +12,10 @@ const clientDatasetRoutes = require('./routes/clientDatasets');
 const taskRoutes = require('./routes/tasks');
 const notificationRoutes = require('./routes/notifications');
 const businessRoutes = require('./routes/business');
+const userRoutes = require('./routes/users');
+const roleRoutes = require('./routes/roles');
+const communityRoutes = require('./routes/communities');
+const permissionRoutes = require('./routes/permissions');
 const path = require('path');
 
 dotenv.config();
@@ -65,6 +69,10 @@ app.use('/api/client-datasets', clientDatasetRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/business', businessRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/communities', communityRoutes);
+app.use('/api/permissions', permissionRoutes);
 
 // Socket.IO Setup
 const io = socketIo(server, {
@@ -88,7 +96,10 @@ io.on('connection', (socket) => {
 app.use((err, req, res, next) => {
   console.error('Error stack:', err.stack);
   console.error('Error message:', err.message);
-  res.status(500).send('Something broke on the server!');
+  if (res.headersSent) return next(err);
+  const status = err.status || (err.code === 11000 ? 409 : 500);
+  const message = err.code === 11000 ? 'A record with the same unique value already exists' : (err.message || 'Server error');
+  return res.status(status).json({ message });
 });
 
 // Start the server

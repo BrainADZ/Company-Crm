@@ -73,6 +73,13 @@ export const createWorkTeam = async (payload) => {
   return response.data;
 };
 
+export const createWorkDesignation = async (payload) => {
+  const response = await axios.post(`${API_BASE_URL}/api/business/work-structure/designations`, payload, {
+    headers: getAdminHeaders(),
+  });
+  return response.data;
+};
+
 export const deleteWorkModule = async (id) => {
   const response = await axios.delete(`${API_BASE_URL}/api/business/work-structure/modules/${id}`, {
     headers: getAdminHeaders(),
@@ -82,6 +89,13 @@ export const deleteWorkModule = async (id) => {
 
 export const deleteWorkTeam = async (id) => {
   const response = await axios.delete(`${API_BASE_URL}/api/business/work-structure/teams/${id}`, {
+    headers: getAdminHeaders(),
+  });
+  return response.data;
+};
+
+export const deleteWorkDesignation = async (id) => {
+  const response = await axios.delete(`${API_BASE_URL}/api/business/work-structure/designations/${id}`, {
     headers: getAdminHeaders(),
   });
   return response.data;

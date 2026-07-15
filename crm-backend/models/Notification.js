@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema({
+  communityKey: { type: String, default: '', trim: true, index: true },
   recipientRole: {
     type: String,
     enum: ['admin', 'employee'],

@@ -13,6 +13,9 @@ const OfficeStructure = require('../models/OfficeStructure');
 const Community = require('../models/Community');
 const authMiddleware = require('../middleware/authMiddleware');
 const { MODULES, UNIVERSAL_COMMUNITIES, DEFAULT_ROLES, COMMUNITY_KEYS } = require('../config/accessControl');
+const { loadAuthorization } = require('../middleware/authorization');
+const { getPermission, buildScopeQuery, getAuthorizedCommunities } = require('../services/accessControlService');
+const { writeAuditLog } = require('../services/auditService');
 
 const router = express.Router();
 
@@ -39,12 +42,15 @@ const defaultOfficeTeams = [
   { name: 'Lead Generation', moduleName: 'Sales' },
   { name: 'Performance Marketing', moduleName: 'Marketing' },
   { name: 'Content Team', moduleName: 'Marketing' },
+  { name: 'Creative Team', moduleName: 'Marketing' },
   { name: 'Billing Team', moduleName: 'Accounts' },
   { name: 'Delivery Team', moduleName: 'Projects' },
   { name: 'Engineering Team', moduleName: 'Projects' },
   { name: 'Operations Team', moduleName: 'Operations' },
   { name: 'Support Team', moduleName: 'Support' },
 ];
+
+const defaultDesignationNames = ['Intern', 'Junior', 'Senior', 'Manager', 'Head'];
 
 const defaultCampaigns = [
   { name: 'Google Search SaaS Leads', channel: 'Google Ads', spend: 185000, impressions: 920000, clicks: 18400, leads: 248, conversions: 31, roi: 3.8, cpl: 746, ctr: 2.0, status: 'Active', owner: 'Marketing' },
@@ -105,17 +111,13 @@ const defaultCommunications = [
 ];
 
 const requireAdmin = (req, res, next) => {
-  if (req.user.crmRole !== 'super_admin') {
-    return res.status(403).json({ message: 'Access denied: Super Admin only' });
-  }
+  if (!getPermission(req.effectivePermissions || [], 'permission_management', 'manage')) return res.status(403).json({ message: 'Access denied: permission_management.manage required' });
   return next();
 };
 
 const hasModuleAccess = async (user, moduleKey) => {
-  if (user.crmRole === 'super_admin') return true;
-  if ((user.permissions || []).includes(moduleKey)) return true;
-  const role = await RolePermission.findOne({ roleKey: user.crmRole }).select('modules');
-  return Boolean(role?.modules?.includes(moduleKey));
+  if (user.roleKey === 'super_admin') return true;
+  return Boolean(moduleKey);
 };
 
 const requireModule = (moduleKey) => async (req, res, next) => {
@@ -181,8 +183,8 @@ const ensureDefaults = async (createdBy) => {
   )));
 
   await User.updateMany(
-    { role: 'admin', $or: [{ crmRole: { $ne: 'super_admin' } }, { communities: { $not: { $all: COMMUNITY_KEYS } } }] },
-    { $set: { crmRole: 'super_admin', communities: COMMUNITY_KEYS } },
+    { role: 'admin', $or: [{ roleKey: { $ne: 'super_admin' } }, { crmRole: { $ne: 'super_admin' } }, { communities: { $not: { $all: COMMUNITY_KEYS } } }] },
+    { $set: { roleKey: 'super_admin', crmRole: 'super_admin', communities: COMMUNITY_KEYS, primaryCommunity: 'live' } },
   );
 
   if (await OfficeStructure.countDocuments() === 0) {
@@ -191,6 +193,24 @@ const ensureDefaults = async (createdBy) => {
       ...defaultOfficeTeams.map((team) => ({ type: 'team', ...team, createdBy })),
     ]);
   }
+
+  await Promise.all(defaultOfficeTeams.map((team) => OfficeStructure.updateOne(
+    { type: 'team', name: team.name },
+    { $setOnInsert: { type: 'team', ...team, createdBy } },
+    { upsert: true },
+  )));
+
+  const teamNames = await OfficeStructure.distinct('name', { type: 'team' });
+  const legacyDesignations = await OfficeStructure.find({ type: 'designation', moduleName: '' });
+  await Promise.all(legacyDesignations.map((designation) => OfficeStructure.updateOne(
+    { _id: designation._id },
+    { $set: { moduleName: designation.teamName } },
+  )));
+  await Promise.all(teamNames.flatMap((teamName) => defaultDesignationNames.map((name) => OfficeStructure.updateOne(
+    { type: 'designation', name, teamName },
+    { $setOnInsert: { type: 'designation', name, teamName, moduleName: teamName, createdBy } },
+    { upsert: true },
+  ))));
 
   if (await BusinessCampaign.countDocuments() === 0) {
     await BusinessCampaign.insertMany(defaultCampaigns.map((item) => ({ ...item, createdBy })));
@@ -221,12 +241,13 @@ const ensureDefaults = async (createdBy) => {
 };
 
 const getWorkStructure = async () => {
-  const [modules, teams] = await Promise.all([
+  const [modules, teams, designations] = await Promise.all([
     OfficeStructure.find({ type: 'module' }).sort({ name: 1 }),
-    OfficeStructure.find({ type: 'team' }).sort({ moduleName: 1, name: 1 }),
+    OfficeStructure.find({ type: 'team' }).sort({ name: 1 }),
+    OfficeStructure.find({ type: 'designation' }).sort({ teamName: 1, name: 1 }),
   ]);
 
-  return { modules, teams };
+  return { modules, teams, designations };
 };
 
 const buildAssignedTaskQuery = (employee) => ({
@@ -267,7 +288,8 @@ const getDatasetSummary = (dataset) => {
   };
 };
 
-const buildSummary = async () => {
+const buildSummary = async (communityKeys) => {
+  const communityQuery = { communityKey: { $in: communityKeys } };
   const [
     employees,
     datasets,
@@ -279,15 +301,15 @@ const buildSummary = async () => {
     documents,
     communications,
   ] = await Promise.all([
-    User.find({ role: 'employee' }).select('name email position lastLoginAt'),
-    ClientDataset.find(),
-    Meeting.find(),
-    BusinessCampaign.find().sort({ updatedAt: -1 }),
-    FinanceRecord.find().sort({ updatedAt: -1 }),
-    BusinessProject.find().sort({ updatedAt: -1 }),
-    BusinessProjectTask.find().sort({ due: 1 }),
-    DocumentRecord.find().sort({ updatedAt: -1 }),
-    CommunicationLog.find().sort({ createdAt: -1 }),
+    User.find({ role: 'employee', communities: { $in: communityKeys }, isDeleted: { $ne: true } }).select('name email position lastLoginAt'),
+    ClientDataset.find(communityQuery),
+    Meeting.find(communityQuery),
+    BusinessCampaign.find(communityQuery).sort({ updatedAt: -1 }),
+    FinanceRecord.find(communityQuery).sort({ updatedAt: -1 }),
+    BusinessProject.find(communityQuery).sort({ updatedAt: -1 }),
+    BusinessProjectTask.find(communityQuery).sort({ due: 1 }),
+    DocumentRecord.find(communityQuery).sort({ updatedAt: -1 }),
+    CommunicationLog.find(communityQuery).sort({ createdAt: -1 }),
   ]);
 
   const sales = datasets.reduce((accumulator, dataset) => {
@@ -373,10 +395,12 @@ const buildSummary = async () => {
 const resourceConfig = {
   campaigns: {
     model: BusinessCampaign,
+    permissionResource: 'campaigns',
     sort: { updatedAt: -1 },
   },
   finance: {
     model: FinanceRecord,
+    permissionResource: 'accounting',
     sort: { updatedAt: -1 },
     beforeCreate: async (payload) => {
       const type = payload.type === 'invoice' ? 'invoice' : 'quotation';
@@ -387,10 +411,12 @@ const resourceConfig = {
   },
   projects: {
     model: BusinessProject,
+    permissionResource: 'projects',
     sort: { updatedAt: -1 },
   },
   'project-tasks': {
     model: BusinessProjectTask,
+    permissionResource: 'tasks',
     sort: { due: 1, updatedAt: -1 },
     beforeCreate: async (payload) => {
       if (!payload.project) return payload;
@@ -403,20 +429,24 @@ const resourceConfig = {
   },
   documents: {
     model: DocumentRecord,
+    permissionResource: 'documents',
     sort: { updatedAt: -1 },
   },
   communications: {
     model: CommunicationLog,
+    permissionResource: 'communication',
     sort: { createdAt: -1 },
   },
 };
 
-router.use(authMiddleware);
+router.use(authMiddleware, loadAuthorization);
 
 router.get('/summary', requireModule('dashboard'), async (req, res) => {
   try {
     await ensureDefaults(req.user.id);
-    const summary = await buildSummary();
+    const permission = getPermission(req.effectivePermissions, 'dashboard', 'view');
+    if (!permission) return res.status(403).json({ message: 'Access denied: dashboard.view required' });
+    const summary = await buildSummary(getAuthorizedCommunities(req.user, req.selectedCommunity));
     return res.json(summary);
   } catch (error) {
     console.error('Error building business summary:', error);
@@ -489,16 +519,18 @@ router.post('/work-structure/teams', requireAdmin, async (req, res) => {
   try {
     await ensureDefaults(req.user.id);
     const name = String(req.body.name || '').trim();
-    const moduleName = String(req.body.moduleName || '').trim();
-    if (!name || !moduleName) return res.status(400).json({ message: 'Team name and module are required' });
+    if (!name) return res.status(400).json({ message: 'Team name is required' });
+    if (await OfficeStructure.exists({ type: 'team', name })) return res.status(400).json({ message: 'Team already exists' });
 
-    const moduleExists = await OfficeStructure.exists({ type: 'module', name: moduleName });
-    if (!moduleExists) return res.status(400).json({ message: 'Selected module does not exist' });
-
-    await OfficeStructure.create({ type: 'team', name, moduleName, createdBy: req.user.id });
+    await OfficeStructure.create({ type: 'team', name, moduleName: '', createdBy: req.user.id });
+    await Promise.all(defaultDesignationNames.map((designationName) => OfficeStructure.updateOne(
+      { type: 'designation', name: designationName, teamName: name },
+      { $setOnInsert: { type: 'designation', name: designationName, teamName: name, moduleName: name, createdBy: req.user.id } },
+      { upsert: true },
+    )));
     return res.status(201).json({ message: 'Team added', ...(await getWorkStructure()) });
   } catch (error) {
-    if (error.code === 11000) return res.status(400).json({ message: 'Team already exists in this module' });
+    if (error.code === 11000) return res.status(400).json({ message: 'Team already exists' });
     console.error('Error creating team:', error);
     return res.status(500).json({ message: error.message || 'Server error' });
   }
@@ -524,9 +556,35 @@ router.delete('/work-structure/teams/:id', requireAdmin, async (req, res) => {
     const teamItem = await OfficeStructure.findOneAndDelete({ _id: req.params.id, type: 'team' });
     if (!teamItem) return res.status(404).json({ message: 'Team not found' });
 
+    await OfficeStructure.deleteMany({ type: 'designation', teamName: teamItem.name });
+
     return res.json({ message: 'Team removed', ...(await getWorkStructure()) });
   } catch (error) {
     console.error('Error deleting team:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.post('/work-structure/designations', requireAdmin, async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    const teamName = String(req.body.teamName || '').trim();
+    if (!name || !teamName) return res.status(400).json({ message: 'Designation and team are required' });
+    if (!(await OfficeStructure.exists({ type: 'team', name: teamName }))) return res.status(400).json({ message: 'Selected team does not exist' });
+    await OfficeStructure.create({ type: 'designation', name, teamName, moduleName: teamName, createdBy: req.user.id });
+    return res.status(201).json({ message: 'Designation added', ...(await getWorkStructure()) });
+  } catch (error) {
+    if (error.code === 11000) return res.status(400).json({ message: 'Designation already exists in this team' });
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
+router.delete('/work-structure/designations/:id', requireAdmin, async (req, res) => {
+  try {
+    const designation = await OfficeStructure.findOneAndDelete({ _id: req.params.id, type: 'designation' });
+    if (!designation) return res.status(404).json({ message: 'Designation not found' });
+    return res.json({ message: 'Designation removed', ...(await getWorkStructure()) });
+  } catch (error) {
     return res.status(500).json({ message: error.message || 'Server error' });
   }
 });
@@ -536,24 +594,15 @@ router.get('/:resource', async (req, res) => {
     const config = resourceConfig[req.params.resource];
     if (!config) return res.status(404).json({ message: 'Resource not found' });
 
-    const resourceModules = {
-      campaigns: 'marketing',
-      finance: 'accounting',
-      projects: 'projects',
-      'project-tasks': 'tasks',
-      documents: 'documents',
-      communications: 'communication',
-    };
-    if (!(await hasModuleAccess(req.user, resourceModules[req.params.resource]))) {
-      return res.status(403).json({ message: 'Access denied: Module permission required' });
-    }
+    const permission = getPermission(req.effectivePermissions, config.permissionResource, 'view');
+    if (!permission) return res.status(403).json({ message: `Access denied: ${config.permissionResource}.view required` });
 
     await ensureDefaults(req.user.id);
-    let query = {};
+    let query = buildScopeQuery(req.user, permission.scope, req.selectedCommunity);
     if (req.params.resource === 'project-tasks' && req.user.role === 'employee') {
       const employee = await User.findById(req.user.id).select('name email');
       if (!employee) return res.status(404).json({ message: 'Employee not found' });
-      query = buildAssignedTaskQuery(employee);
+      query = { $and: [query, buildAssignedTaskQuery(employee)] };
     }
 
     const items = await config.model.find(query).sort(config.sort);
@@ -564,14 +613,20 @@ router.get('/:resource', async (req, res) => {
   }
 });
 
-router.post('/:resource', requireAdmin, async (req, res) => {
+router.post('/:resource', async (req, res) => {
   try {
     const config = resourceConfig[req.params.resource];
     if (!config) return res.status(404).json({ message: 'Resource not found' });
+    if (!getPermission(req.effectivePermissions, config.permissionResource, 'create')) return res.status(403).json({ message: `Access denied: ${config.permissionResource}.create required` });
 
     await ensureDefaults(req.user.id);
-    const payload = config.beforeCreate ? await config.beforeCreate(req.body) : req.body;
+    const requestedCommunity = String(req.body.communityKey || req.selectedCommunity || '').toLowerCase();
+    if (!requestedCommunity) return res.status(400).json({ message: 'Community is required' });
+    if (req.user.roleKey !== 'super_admin' && !req.user.communities.includes(requestedCommunity)) return res.status(403).json({ message: 'Community access denied' });
+    const input = { ...req.body, communityKey: requestedCommunity };
+    const payload = config.beforeCreate ? await config.beforeCreate(input) : input;
     const item = await config.model.create({ ...payload, createdBy: req.user.id });
+    await writeAuditLog({ req, action: 'record_created', resource: config.permissionResource, resourceId: item._id, newValue: item.toObject(), communityKey: item.communityKey });
     return res.status(201).json({ message: 'Record created successfully', item });
   } catch (error) {
     console.error(`Error creating ${req.params.resource}:`, error);
@@ -585,6 +640,8 @@ router.patch('/:resource/:id', async (req, res) => {
     if (!config) return res.status(404).json({ message: 'Resource not found' });
 
     await ensureDefaults(req.user.id);
+
+    if (!getPermission(req.effectivePermissions, config.permissionResource, 'update')) return res.status(403).json({ message: `Access denied: ${config.permissionResource}.update required` });
 
     if (req.user.role !== 'admin') {
       if (req.params.resource !== 'project-tasks' || req.user.role !== 'employee') {
@@ -622,6 +679,11 @@ router.patch('/:resource/:id', async (req, res) => {
       return res.json({ message: 'Task updated successfully', item });
     }
 
+    const permission = getPermission(req.effectivePermissions, config.permissionResource, 'update');
+    const scopeQuery = buildScopeQuery(req.user, permission.scope, req.selectedCommunity);
+    const current = await config.model.findOne({ _id: req.params.id, ...scopeQuery });
+    if (!current) return res.status(404).json({ message: 'Record not found in your access scope' });
+    if (req.body.communityKey && req.user.roleKey !== 'super_admin' && !req.user.communities.includes(req.body.communityKey)) return res.status(403).json({ message: 'Community access denied' });
     const payload = config.beforeCreate ? await config.beforeCreate(req.body) : req.body;
     const item = await config.model.findByIdAndUpdate(req.params.id, payload, {
       new: true,
@@ -629,6 +691,7 @@ router.patch('/:resource/:id', async (req, res) => {
     });
 
     if (!item) return res.status(404).json({ message: 'Record not found' });
+    await writeAuditLog({ req, action: 'record_updated', resource: config.permissionResource, resourceId: item._id, previousValue: current.toObject(), newValue: item.toObject(), communityKey: item.communityKey });
     return res.json({ message: 'Record updated successfully', item });
   } catch (error) {
     console.error(`Error updating ${req.params.resource}:`, error);
@@ -636,14 +699,18 @@ router.patch('/:resource/:id', async (req, res) => {
   }
 });
 
-router.delete('/:resource/:id', requireAdmin, async (req, res) => {
+router.delete('/:resource/:id', async (req, res) => {
   try {
     const config = resourceConfig[req.params.resource];
     if (!config) return res.status(404).json({ message: 'Resource not found' });
+    const permission = getPermission(req.effectivePermissions, config.permissionResource, 'delete');
+    if (!permission) return res.status(403).json({ message: `Access denied: ${config.permissionResource}.delete required` });
 
     await ensureDefaults(req.user.id);
-    const item = await config.model.findByIdAndDelete(req.params.id);
+    const scopeQuery = buildScopeQuery(req.user, permission.scope, req.selectedCommunity);
+    const item = await config.model.findOneAndDelete({ _id: req.params.id, ...scopeQuery });
     if (!item) return res.status(404).json({ message: 'Record not found' });
+    await writeAuditLog({ req, action: 'record_deleted', resource: config.permissionResource, resourceId: item._id, previousValue: item.toObject(), communityKey: item.communityKey });
     return res.json({ message: 'Record deleted successfully', id: req.params.id });
   } catch (error) {
     console.error(`Error deleting ${req.params.resource}:`, error);

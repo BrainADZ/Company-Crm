@@ -3,9 +3,28 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { COMMUNITY_KEYS } = require('../config/accessControl');
+const { writeAuditLog } = require('../services/auditService');
 
 const router = express.Router();
 const TOKEN_EXPIRES_IN = '7d';
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 10;
+const WINDOW_MS = 15 * 60 * 1000;
+
+const rateLimitLogin = (req, res, next) => {
+  const key = `${getSourceIp(req)}:${String(req.body.email || '').toLowerCase()}`;
+  const now = Date.now();
+  const current = loginAttempts.get(key) || { count: 0, resetAt: now + WINDOW_MS };
+  if (current.resetAt <= now) {
+    current.count = 0;
+    current.resetAt = now + WINDOW_MS;
+  }
+  current.count += 1;
+  loginAttempts.set(key, current);
+  if (current.count > MAX_ATTEMPTS) return res.status(429).json({ message: 'Too many login attempts. Try again later.' });
+  req.loginAttemptKey = key;
+  return next();
+};
 
 const getSourceIp = (req) => {
   const forwardedFor = req.headers['x-forwarded-for'];
@@ -34,91 +53,71 @@ const recordLogin = async (user, req, status = 'Success') => {
   await user.save();
 };
 
-// Admin Login
-router.post('/login', async (req, res) => {
+const handleLogin = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Check if the user exists
-    const user = await User.findOne({ email });
+    const user = await User.findOne({
+      email: String(email || '').trim().toLowerCase(),
+      isDeleted: { $ne: true },
+    }).select('+password');
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Verify the password
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = user.password && await bcrypt.compare(String(password || ''), user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Ensure the user is an admin
-    if (user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied: Admins only' });
-    }
+    if (user.accountStatus !== 'active') return res.status(403).json({ message: `Account is ${user.accountStatus}` });
 
-    if (user.crmRole !== 'super_admin' || COMMUNITY_KEYS.some((key) => !(user.communities || []).includes(key))) {
+    if (user.role === 'admin' && (user.roleKey !== 'super_admin' || COMMUNITY_KEYS.some((key) => !(user.communities || []).includes(key)))) {
+      user.roleKey = 'super_admin';
       user.crmRole = 'super_admin';
       user.communities = COMMUNITY_KEYS;
+      user.primaryCommunity = user.primaryCommunity || 'live';
+      user.accountStatus = 'active';
     }
 
     await recordLogin(user, req);
 
-    // Generate JWT for admin
     const payload = {
       user: {
         id: user._id,
         role: user.role,
-        crmRole: user.crmRole,
-        communities: user.communities,
+        roleKey: user.roleKey || user.crmRole,
+        crmRole: user.crmRole || user.roleKey,
+        communities: user.communities || [],
+        sessionVersion: user.sessionVersion || 0,
       },
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: TOKEN_EXPIRES_IN });
 
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, crmRole: user.crmRole, communities: user.communities } });
-  } catch (err) {
-    console.error('Error during admin login:', err.message);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Employee Login
-router.post('/employee-login', async (req, res) => {
-  const { email, password } = req.body;
-
-  try {
-    // Check if the employee exists
-    const employee = await User.findOne({ email, role: 'employee' });
-
-    if (!employee) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
-
-    // Verify the password
-    const isMatch = await bcrypt.compare(password, employee.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
-
-    await recordLogin(employee, req);
-
-    // Generate JWT for employee
-    const payload = {
+    loginAttempts.delete(req.loginAttemptKey);
+    await writeAuditLog({ req, actorUserId: user._id, targetUserId: user._id, action: 'login_success', resource: 'auth', resourceId: user._id, communityKey: user.primaryCommunity });
+    return res.json({
+      token,
+      workspace: user.role === 'admin' ? 'admin' : 'employee',
       user: {
-        id: employee._id,
-        role: employee.role,
-        crmRole: employee.crmRole,
-        communities: employee.communities || [],
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        roleKey: user.roleKey || user.crmRole,
+        crmRole: user.crmRole || user.roleKey,
+        communities: user.communities || [],
+        primaryCommunity: user.primaryCommunity,
       },
-    };
-
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: TOKEN_EXPIRES_IN });
-
-    res.json({ token, user: { id: employee._id, name: employee.name, email: employee.email, role: employee.role, crmRole: employee.crmRole, communities: employee.communities || [] } });
+    });
   } catch (err) {
-    console.error('Error during employee login:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error during login:', err.message);
+    return res.status(500).json({ message: 'Server error' });
   }
-});
+};
+
+router.post('/login', rateLimitLogin, handleLogin);
+router.post('/employee-login', rateLimitLogin, handleLogin);
 
 module.exports = router;

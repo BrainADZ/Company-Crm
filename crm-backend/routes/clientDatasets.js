@@ -5,8 +5,11 @@ const ClientDataset = require('../models/ClientDataset');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
 const { createNotification } = require('../utils/notifications');
+const { loadAuthorization } = require('../middleware/authorization');
+const { getPermission } = require('../services/accessControlService');
 
 const router = express.Router();
+router.use(authMiddleware, loadAuthorization);
 const CLIENT_WORK_COLUMNS = ['Status', 'Remark', 'Employee'];
 const CLIENT_STATUS_OPTIONS = [
   'Pending',
@@ -39,11 +42,16 @@ const upload = multer({
 });
 
 const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Access denied: Admins only' });
-  }
+  const action = req.method === 'GET' ? 'view' : req.method === 'POST' ? 'create' : req.method === 'DELETE' ? 'delete' : (req.path.includes('assign') ? 'assign' : 'update');
+  if (!getPermission(req.effectivePermissions, 'leads', action)) return res.status(403).json({ message: `Access denied: leads.${action} required` });
   return next();
 };
+
+const communityFilter = (req) => ({
+  communityKey: { $in: req.selectedCommunity ? [req.selectedCommunity] : (req.user.roleKey === 'super_admin' ? ['live', 'marketing', 'exhibition'] : req.user.communities) },
+});
+
+const requestedCommunity = (req) => String(req.body.communityKey || req.selectedCommunity || '').trim().toLowerCase();
 
 const normalizeCell = (cell) => {
   if (cell === null || cell === undefined) return '';
@@ -269,7 +277,7 @@ const getEmployeeDatasetResponse = (dataset, employeeId) => {
 
 router.get('/', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const datasets = await ClientDataset.find()
+    const datasets = await ClientDataset.find(communityFilter(req))
       .sort({ createdAt: -1 });
 
     res.json(datasets.map(getDatasetListItem));
@@ -287,6 +295,7 @@ router.get('/assigned/me', authMiddleware, async (req, res) => {
 
     const datasets = await ClientDataset.find({
       'rowAssignments.employee': req.user.id,
+      ...communityFilter(req),
     }).select('-rowLogs').sort({ updatedAt: -1 });
 
     const assignedDatasets = datasets.map((dataset) => {
@@ -312,7 +321,7 @@ router.get('/assigned/me', authMiddleware, async (req, res) => {
 
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const dataset = await ClientDataset.findById(req.params.id);
+    const dataset = await ClientDataset.findOne({ _id: req.params.id, ...communityFilter(req) });
 
     if (!dataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
@@ -348,7 +357,7 @@ router.patch('/:id/rows/:rowIndex/status', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'Invalid status selected' });
     }
 
-    const dataset = await ClientDataset.findById(req.params.id);
+    const dataset = await ClientDataset.findOne({ _id: req.params.id, ...communityFilter(req) });
 
     if (!dataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
@@ -469,15 +478,16 @@ router.patch('/:id/assign', authMiddleware, requireAdmin, async (req, res) => {
       return res.status(400).json({ message: 'Select at least one row to assign' });
     }
 
-    const employee = await User.findOne({ _id: employeeId, role: 'employee' }).select('name email');
+    const employee = await User.findOne({ _id: employeeId, role: 'employee', isDeleted: { $ne: true }, accountStatus: 'active' }).select('name email communities');
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
     }
 
-    const dataset = await ClientDataset.findById(req.params.id);
+    const dataset = await ClientDataset.findOne({ _id: req.params.id, ...communityFilter(req) });
     if (!dataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
     }
+    if (!employee.communities.includes(dataset.communityKey)) return res.status(403).json({ message: 'Cannot assign data outside employee communities' });
 
     const { columns, rows } = addWorkColumnsAfterWebsite(dataset.columns || [], dataset.rows || []);
     const employeeIndex = getColumnIndex(columns, 'Employee');
@@ -561,7 +571,7 @@ router.patch('/:id/unassign', authMiddleware, requireAdmin, async (req, res) => 
       return res.status(400).json({ message: 'Select at least one row to unassign' });
     }
 
-    const dataset = await ClientDataset.findById(req.params.id);
+    const dataset = await ClientDataset.findOne({ _id: req.params.id, ...communityFilter(req) });
     if (!dataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
     }
@@ -644,7 +654,7 @@ router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
       return res.status(400).json({ message: 'Dataset name is required' });
     }
 
-    const dataset = await ClientDataset.findById(req.params.id);
+    const dataset = await ClientDataset.findOne({ _id: req.params.id, ...communityFilter(req) });
 
     if (!dataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
@@ -689,8 +699,8 @@ router.patch('/labels/bulk', authMiddleware, requireAdmin, async (req, res) => {
     if (['Low', 'Medium', 'High'].includes(priority)) update.priority = priority;
     if (salesStage) update.salesStage = salesStage;
 
-    await ClientDataset.updateMany({ _id: { $in: datasetIds } }, { $set: update });
-    const datasets = await ClientDataset.find({ _id: { $in: datasetIds } });
+    await ClientDataset.updateMany({ _id: { $in: datasetIds }, ...communityFilter(req) }, { $set: update });
+    const datasets = await ClientDataset.find({ _id: { $in: datasetIds }, ...communityFilter(req) });
 
     return res.json({
       message: `${datasets.length} account list${datasets.length === 1 ? '' : 's'} updated`,
@@ -716,10 +726,13 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     const source = normalizeCell(req.body.source) || 'Manual';
     const ownerAlias = normalizeCell(req.body.ownerAlias) || 'Admin';
     const salesStage = normalizeCell(req.body.salesStage) || 'Prospecting';
+    const communityKey = requestedCommunity(req);
 
     if (!name) {
       return res.status(400).json({ message: 'Account list name is required' });
     }
+    if (!communityKey) return res.status(400).json({ message: 'Community is required' });
+    if (req.user.roleKey !== 'super_admin' && !req.user.communities.includes(communityKey)) return res.status(403).json({ message: 'Community access denied' });
 
     if (!accountName) {
       return res.status(400).json({ message: 'Account name is required' });
@@ -737,6 +750,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     const normalizedAccountData = addWorkColumnsAfterWebsite(accountColumns, [accountRow]);
 
     const dataset = new ClientDataset({
+      communityKey,
       name,
       year,
       label,
@@ -765,7 +779,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 
 router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const deletedDataset = await ClientDataset.findByIdAndDelete(req.params.id);
+    const deletedDataset = await ClientDataset.findOneAndDelete({ _id: req.params.id, ...communityFilter(req) });
 
     if (!deletedDataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
@@ -784,10 +798,13 @@ router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
 router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), async (req, res) => {
   try {
     const { name, year } = req.body;
+    const communityKey = requestedCommunity(req);
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: 'Dataset name is required' });
     }
+    if (!communityKey) return res.status(400).json({ message: 'Community is required' });
+    if (req.user.roleKey !== 'super_admin' && !req.user.communities.includes(communityKey)) return res.status(403).json({ message: 'Community access denied' });
 
     if (!req.file) {
       return res.status(400).json({ message: 'Excel file is required' });
@@ -814,6 +831,7 @@ router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), asyn
     const filledRows = rows.filter((row) => row.some((cell) => cell));
 
     const dataset = new ClientDataset({
+      communityKey,
       name: name.trim(),
       year: year?.trim() || '',
       label: normalizeCell(req.body.label) || 'Prospect List',

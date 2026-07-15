@@ -4,7 +4,6 @@ const csvParser = require('csv-parser');
 const Client = require('../models/Client');
 require('dotenv').config();
 
-// Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -18,7 +17,7 @@ const importClients = (filePath) => {
   fs.createReadStream(filePath)
     .pipe(csvParser())
     .on('data', (row) => {
-      console.log('Row data:', row); // Add this line to check the data
+      console.log('Row data:', row); 
 
 const client = {
   name: row['name'],
@@ -44,6 +43,4 @@ const client = {
     });
 };
 
-// Run the import function with your CSV file path
-// Run the import function with your CSV file path
 importClients('/Users/rishabhpratap009/Downloads/Google_map_data_scraper-main/output/dummy_data.csv');

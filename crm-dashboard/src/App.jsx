@@ -5,13 +5,11 @@ import Clients from './pages/Clients';
 import ClientDatasetDetail from './pages/ClientDatasetDetail';
 import Employees from './pages/Employees';
 import Login from './pages/Login';
-import EmployeeLogin from './pages/employee-login.jsx';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import EmployeeTasks from './pages/EmployeeTask'; // Import EmployeeTasks
 import EmployeeDatasets from './pages/EmployeeDatasets';
 import PrivateRoute from './components/PrivateRoute';
 import AdminTasks from './pages/AdminTasks';
-import LoginSelectionPage from './pages/LoginSelectionPage'; // Ensure this import is correct
 import AdminDashboardHome from './pages/AdminDashboardHome';
 import WhatsAppDemo from './pages/WhatsAppDemo';
 import AccountSettings from './pages/AccountSettings';
@@ -24,6 +22,7 @@ import DocumentsHub from './pages/DocumentsHub';
 import PermissionsHub from './pages/PermissionsHub';
 import Meetings from './pages/Meetings';
 import TeamWorkload from './pages/TeamWorkload';
+import Departments from './pages/Departments';
 import { getAuthenticatedRole } from './utils/auth';
 
 const App = () => {
@@ -41,16 +40,13 @@ const App = () => {
             ) : authenticatedRole === 'employee' ? (
               <Navigate to="/employee-dashboard" replace />
             ) : (
-              <LoginSelectionPage />
+              <Navigate to="/login" replace />
             )
           }
         />
 
-        {/* Admin Login */}
-        <Route path="/login" element={<Login />} />
-
-        {/* Employee Login */}
-        <Route path="/employee-login" element={<EmployeeLogin />} />
+        <Route path="/login" element={authenticatedRole === 'admin' ? <Navigate to="/dashboard" replace /> : authenticatedRole === 'employee' ? <Navigate to="/employee-dashboard" replace /> : <Login />} />
+        <Route path="/employee-login" element={<Navigate to="/login" replace />} />
 
         {/* Admin Dashboard Routes */}
         <Route path="/dashboard" element={<PrivateRoute role="admin"><DashboardLayout /></PrivateRoute>}>
@@ -59,6 +55,7 @@ const App = () => {
           <Route path="clients" element={<Clients />} />
           <Route path="clients/:datasetId" element={<ClientDatasetDetail />} />
           <Route path="employees" element={<Employees />} />
+          <Route path="departments" element={<Departments />} />
           <Route path="tasks" element={<AdminTasks />} />
           <Route path="workload" element={<TeamWorkload />} />
           <Route path="meetings" element={<Meetings />} />

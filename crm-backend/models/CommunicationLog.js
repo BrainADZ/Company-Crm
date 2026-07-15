@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const communicationLogSchema = new mongoose.Schema({
+  communityKey: { type: String, required: true, default: 'live', index: true },
+  officeModule: { type: String, default: 'Sales', trim: true, index: true },
+  team: { type: String, default: '', trim: true, index: true },
+  linkedUserIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   clientName: { type: String, required: true, trim: true },
   contact: { type: String, default: '', trim: true },
   channel: {
@@ -22,5 +26,7 @@ const communicationLogSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+communicationLogSchema.index({ communityKey: 1, createdAt: -1 });
 
 module.exports = mongoose.model('CommunicationLog', communicationLogSchema);

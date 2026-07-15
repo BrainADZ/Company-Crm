@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const businessProjectTaskSchema = new mongoose.Schema({
+  communityKey: { type: String, required: true, default: 'live', index: true },
+  officeModule: { type: String, default: 'Projects', trim: true, index: true },
+  assigneeUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  assignedUserIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  clientVisible: { type: Boolean, default: false },
+  vendorVisible: { type: Boolean, default: false },
   project: { type: mongoose.Schema.Types.ObjectId, ref: 'BusinessProject' },
   projectName: { type: String, default: '', trim: true },
   name: { type: String, required: true, trim: true },
@@ -25,5 +31,7 @@ const businessProjectTaskSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+businessProjectTaskSchema.index({ communityKey: 1, assigneeUser: 1, status: 1 });
 
 module.exports = mongoose.model('BusinessProjectTask', businessProjectTaskSchema);

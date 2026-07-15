@@ -22,7 +22,7 @@ const seedSuperAdmin = async () => {
 
   await Promise.all(DEFAULT_ROLES.map((role) => RolePermission.updateOne(
     { roleKey: role.roleKey },
-    role.locked ? { $set: role } : { $setOnInsert: role },
+    { $set: { ...role, systemRole: true } },
     { upsert: true },
   )));
   await RolePermission.deleteOne({ roleKey: 'admin' });
@@ -47,10 +47,15 @@ const seedSuperAdmin = async () => {
         name,
         password: passwordHash,
         role: 'admin',
+        roleKey: 'super_admin',
         crmRole: 'super_admin',
         communities: COMMUNITY_KEYS,
+        primaryCommunity: 'live',
+        userType: 'employee',
+        accountStatus: 'active',
         permissions: [],
         passwordChangedAt: new Date(),
+        sessionVersion: 0,
       },
     },
     { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },

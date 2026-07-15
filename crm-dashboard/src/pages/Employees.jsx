@@ -1,810 +1,333 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import Modal from 'react-modal';
+import {
+  BriefcaseBusiness, ChevronRight, Edit3, Plus, Search, ShieldCheck,
+  Trash2, UserPlus, Users, X,
+} from 'lucide-react';
 import PasswordInput from '../components/PasswordInput';
 import { API_BASE_URL, getAssetUrl } from '../config/api';
 import {
-  createWorkModule,
-  createWorkTeam,
-  deleteWorkModule,
-  deleteWorkTeam,
-  getWorkStructure,
+  createWorkDesignation, createWorkTeam, deleteWorkDesignation, deleteWorkTeam, getBusinessPermissions, getWorkStructure,
 } from '../services/businessApi';
 
 Modal.setAppElement('#root');
 
-const emptyForm = {
-  name: '',
-  email: '',
-  password: '',
-  phone: '',
-  address: '',
-  position: '',
-  department: 'Sales',
-  officeModule: 'Sales',
-  team: 'Sales Team',
-  crmRole: 'employee',
-  permissions: '',
-  image: null,
+const COMMUNITIES = [
+  { key: 'live', label: 'Live', tone: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { key: 'marketing', label: 'Marketing', tone: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { key: 'exhibition', label: 'Exhibition', tone: 'bg-amber-50 text-amber-700 border-amber-200' },
+];
+
+const blankForm = {
+  name: '', email: '', password: '', phone: '', address: '', team: '', position: '',
+  crmRole: 'employee', communities: [], image: null,
 };
 
-const avatarClasses = ['bg-blue-600', 'bg-violet-600', 'bg-rose-600', 'bg-teal-600', 'bg-amber-500', 'bg-emerald-600'];
-
-const filterOptions = [
-  { id: 'all', label: 'All Employees' },
-  { id: 'managers', label: 'Managers' },
-  { id: 'recent', label: 'Recent Login' },
-  { id: 'missing-contact', label: 'Missing Contact' },
-];
-
-const crmRoleOptions = [
-  ['employee', 'Employee'],
-  ['sales_manager', 'Sales Manager'],
-  ['marketing_manager', 'Marketing Manager'],
-  ['accounts_manager', 'Accounts Manager'],
-  ['project_manager', 'Project Manager'],
-  ['client_viewer', 'Client Viewer'],
-];
-
-const getInitials = (name = '') => (
-  name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'EM'
-);
-
-const getAvatarClass = (name = '') => avatarClasses[(name.charCodeAt(0) || 0) % avatarClasses.length];
-
-const getAuthHeaders = () => ({
-  Authorization: `Bearer ${localStorage.getItem('adminToken')}`,
-});
-
-const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('adminToken')}` });
+const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 const labelClass = 'mb-1.5 block text-xs font-bold text-slate-600';
-const iconButtonClass = 'inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 hover:text-blue-700';
-const iconClass = 'h-4 w-4 fill-none stroke-current';
-
-const formatDate = (value) => {
-  if (!value) return 'Never';
-
-  return new Intl.DateTimeFormat('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
-};
-
-const isRecentLogin = (employee) => {
-  if (!employee.lastLoginAt) return false;
-  const diffMs = Date.now() - new Date(employee.lastLoginAt).getTime();
-  return diffMs <= 7 * 24 * 60 * 60 * 1000;
-};
-
-const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+const initials = (name = '') => name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'EM';
+const formatDate = (value) => value ? new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' }).format(new Date(value)) : 'Never';
 
 const Employees = () => {
   const [employees, setEmployees] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [modalIsOpen, setModalIsOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingEmployeeId, setEditingEmployeeId] = useState(null);
-  const [formData, setFormData] = useState(emptyForm);
-  const [success, setSuccess] = useState('');
-  const [error, setError] = useState('');
-  const [pageMessage, setPageMessage] = useState('');
+  const [activeView, setActiveView] = useState('employees');
+  const [structure, setStructure] = useState({ teams: [], designations: [] });
+  const [roles, setRoles] = useState([]);
+  const [selectedTeam, setSelectedTeam] = useState('');
+  const [search, setSearch] = useState('');
+  const [teamFilter, setTeamFilter] = useState('all');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [communityFilter, setCommunityFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState('');
-  const [imagePreview, setImagePreview] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [structure, setStructure] = useState({ modules: [], teams: [] });
-  const [structureModal, setStructureModal] = useState(null);
-  const [structureForm, setStructureForm] = useState({ name: '', moduleName: 'Sales' });
-  const [isStructureSaving, setIsStructureSaving] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const fetchEmployees = useCallback(async () => {
-    setIsLoading(true);
+  const [employeeModal, setEmployeeModal] = useState(false);
+  const [editingId, setEditingId] = useState('');
+  const [form, setForm] = useState(blankForm);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [imagePreview, setImagePreview] = useState('');
+
+  const [structureModal, setStructureModal] = useState('');
+  const [structureName, setStructureName] = useState('');
+  const [structureSaving, setStructureSaving] = useState(false);
+  const selectAllRef = useRef(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
     setPageError('');
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/employees`, {
-        headers: getAuthHeaders(),
-      });
-      setEmployees(response.data);
-    } catch (requestError) {
-      setPageError(requestError.response?.data?.message || 'Unable to load employees');
+      const [employeeResponse, structureResponse, permissionResponse] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/employees`, { headers: headers() }),
+        getWorkStructure(),
+        getBusinessPermissions(),
+      ]);
+      setEmployees(employeeResponse.data || []);
+      const nextStructure = {
+        teams: structureResponse.teams || [],
+        designations: structureResponse.designations || [],
+      };
+      setStructure(nextStructure);
+      setRoles((permissionResponse.roles || []).filter((role) => role.roleKey !== 'super_admin' && role.active !== false));
+      setSelectedTeam((current) => current || nextStructure.teams[0]?.name || '');
+    } catch (error) {
+      setPageError(error.response?.data?.message || 'Unable to load team management');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }, []);
 
-  const fetchStructure = useCallback(async () => {
-    try {
-      const response = await getWorkStructure();
-      setStructure({
-        modules: response.modules || [],
-        teams: response.teams || [],
-      });
-    } catch (requestError) {
-      setPageError(requestError.response?.data?.message || 'Unable to load office modules');
-    }
-  }, []);
-
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    fetchEmployees();
-    fetchStructure();
-  }, [fetchEmployees, fetchStructure]);
+    if (selectAllRef.current) selectAllRef.current.indeterminate = form.communities.length > 0 && form.communities.length < COMMUNITIES.length;
+  }, [form.communities]);
 
-  const moduleOptions = useMemo(() => (
-    structure.modules.length ? structure.modules.map((item) => item.name) : ['Sales']
-  ), [structure.modules]);
+  const selectedDesignations = useMemo(() => structure.designations.filter((item) => item.teamName === selectedTeam), [selectedTeam, structure.designations]);
+  const formDesignations = useMemo(() => structure.designations.filter((item) => item.teamName === form.team), [form.team, structure.designations]);
+  const getRoleLabel = useCallback((key) => roles.find((role) => role.roleKey === key)?.roleLabel || key || 'Employee', [roles]);
+  const filtered = useMemo(() => employees.filter((employee) => {
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || [employee.name, employee.email, employee.phone, employee.team, employee.position, getRoleLabel(employee.roleKey || employee.crmRole)].some((value) => String(value || '').toLowerCase().includes(query));
+    return matchesSearch
+      && (teamFilter === 'all' || employee.team === teamFilter)
+      && (roleFilter === 'all' || (employee.roleKey || employee.crmRole) === roleFilter)
+      && (communityFilter === 'all' || employee.communities?.includes(communityFilter));
+  }), [communityFilter, employees, getRoleLabel, roleFilter, search, teamFilter]);
 
-  const teamOptions = useMemo(() => (
-    structure.teams.filter((team) => team.moduleName === formData.officeModule)
-  ), [formData.officeModule, structure.teams]);
-
-  const stats = useMemo(() => ({
-    total: employees.length,
-    managers: employees.filter((employee) => String(employee.position || '').toLowerCase().includes('manager')).length,
-    withPhone: employees.filter((employee) => employee.phone).length,
-    recentLogin: employees.filter(isRecentLogin).length,
-    modules: structure.modules.length || new Set(employees.map((employee) => employee.officeModule || employee.department).filter(Boolean)).size,
-    teams: structure.teams.length || new Set(employees.map((employee) => employee.team).filter(Boolean)).size,
-  }), [employees, structure.modules.length, structure.teams.length]);
-
-  const filteredEmployees = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-
-    return employees.filter((employee) => {
-      const matchesSearch = !normalizedSearch || [
-        employee.name,
-        employee.email,
-        employee.phone,
-        employee.address,
-        employee.position,
-        employee.department,
-        employee.officeModule,
-        employee.team,
-        employee.crmRole,
-      ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
-
-      const matchesFilter = activeFilter === 'all'
-        || (activeFilter === 'managers' && String(employee.position || '').toLowerCase().includes('manager'))
-        || (activeFilter === 'recent' && isRecentLogin(employee))
-        || (activeFilter === 'missing-contact' && (!employee.phone || !employee.address));
-
-      return matchesSearch && matchesFilter;
-    });
-  }, [activeFilter, employees, searchTerm]);
-
-  const openModal = (employee = null) => {
-    setSuccess('');
-    setError('');
+  const openEmployee = (employee = null) => {
+    setFormError('');
     if (employee) {
-      setIsEditing(true);
-      setEditingEmployeeId(employee._id);
-      setFormData({
-        name: employee.name || '',
-        email: employee.email || '',
-        password: '',
-        phone: employee.phone || '',
-        address: employee.address || '',
-        position: employee.position || '',
-        department: employee.officeModule || employee.department || moduleOptions[0] || 'Sales',
-        officeModule: employee.officeModule || employee.department || moduleOptions[0] || 'Sales',
-        team: employee.team || '',
-        crmRole: employee.crmRole || 'employee',
-        permissions: (employee.permissions || []).join(','),
-        image: null,
+      setEditingId(employee._id);
+      setForm({
+        ...blankForm,
+        name: employee.name || '', email: employee.email || '', phone: String(employee.phone || '').replace(/^\+91/, ''),
+        address: employee.address || '', team: employee.team || '', position: employee.position || '',
+        crmRole: employee.roleKey || employee.crmRole || 'employee', communities: employee.communities || [],
       });
       setImagePreview(getAssetUrl(employee.imageUrl));
     } else {
-      setIsEditing(false);
-      setEditingEmployeeId(null);
-      const defaultModule = moduleOptions[0] || emptyForm.officeModule;
-      const defaultTeam = structure.teams.find((team) => team.moduleName === defaultModule)?.name || '';
-      setFormData({ ...emptyForm, department: defaultModule, officeModule: defaultModule, team: defaultTeam });
-      setImagePreview(null);
+      const team = structure.teams[0]?.name || '';
+      const position = structure.designations.find((item) => item.teamName === team)?.name || '';
+      setEditingId('');
+      setForm({ ...blankForm, team, position });
+      setImagePreview('');
     }
-    setModalIsOpen(true);
+    setEmployeeModal(true);
   };
 
-  const closeModal = () => {
-    setModalIsOpen(false);
-    setImagePreview(null);
-    setSuccess('');
-    setError('');
+  const changeTeam = (team) => {
+    const position = structure.designations.find((item) => item.teamName === team)?.name || '';
+    setForm((current) => ({ ...current, team, position }));
   };
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    if (name === 'officeModule') {
-      const firstTeam = structure.teams.find((team) => team.moduleName === value)?.name || '';
-      setFormData((previous) => ({
-        ...previous,
-        officeModule: value,
-        department: value,
-        team: firstTeam,
-      }));
-    } else {
-      setFormData((previous) => ({ ...previous, [name]: value }));
-    }
-    setSuccess('');
-    setError('');
-  };
+  const toggleCommunity = (key) => setForm((current) => ({
+    ...current,
+    communities: current.communities.includes(key) ? current.communities.filter((item) => item !== key) : [...current.communities, key],
+  }));
 
-  const handleImageChange = (event) => {
-    const file = event.target.files[0] || null;
-    setFormData((previous) => ({ ...previous, image: file }));
-    setImagePreview(file ? URL.createObjectURL(file) : null);
-  };
-
-  const handleSubmit = async (event) => {
+  const submitEmployee = async (event) => {
     event.preventDefault();
-    setIsSaving(true);
-    setSuccess('');
-    setError('');
-
+    setFormError('');
+    if (!form.communities.length) { setFormError('Select at least one community.'); return; }
+    if (!/^\d{10}$/.test(form.phone)) { setFormError('Enter exactly 10 phone digits after +91.'); return; }
+    setSaving(true);
     const data = new FormData();
-    Object.entries({ ...formData, department: formData.officeModule }).forEach(([key, value]) => {
-      if (value === null || value === '') return;
-      data.append(key, value);
+    Object.entries(form).forEach(([key, value]) => {
+      if (key === 'image' && !value) return;
+      if (key === 'password' && editingId && !value) return;
+      data.append(key, Array.isArray(value) ? value.join(',') : value);
     });
-
+    data.set('phone', `+91${form.phone}`);
     try {
-      const config = { headers: getAuthHeaders() };
-      const response = isEditing
-        ? await axios.put(`${API_BASE_URL}/api/employees/${editingEmployeeId}`, data, config)
-        : await axios.post(`${API_BASE_URL}/api/employees/register`, data, config);
-
-      setSuccess(response.data.message);
-      setPageMessage(response.data.message);
-      await fetchEmployees();
-      window.setTimeout(closeModal, 450);
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || 'An error occurred');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const openStructureModal = (type) => {
-    const defaultModule = moduleOptions[0] || 'Sales';
-    setStructureForm({ name: '', moduleName: defaultModule });
-    setStructureModal(type);
-    setPageMessage('');
-    setPageError('');
-  };
-
-  const closeStructureModal = () => {
-    setStructureModal(null);
-    setStructureForm({ name: '', moduleName: moduleOptions[0] || 'Sales' });
+      const response = editingId
+        ? await axios.put(`${API_BASE_URL}/api/employees/${editingId}`, data, { headers: headers() })
+        : await axios.post(`${API_BASE_URL}/api/employees/register`, data, { headers: headers() });
+      setMessage(response.data.message);
+      setEmployeeModal(false);
+      await load();
+    } catch (error) {
+      setFormError(error.response?.data?.message || 'Unable to save employee');
+    } finally { setSaving(false); }
   };
 
   const submitStructure = async (event) => {
     event.preventDefault();
-    setIsStructureSaving(true);
-    setPageMessage('');
-    setPageError('');
-
-    try {
-      const response = structureModal === 'module'
-        ? await createWorkModule(structureForm.name)
-        : await createWorkTeam({ name: structureForm.name, moduleName: structureForm.moduleName });
-
-      setStructure({ modules: response.modules || [], teams: response.teams || [] });
-      setPageMessage(response.message);
-      closeStructureModal();
-    } catch (requestError) {
-      setPageError(requestError.response?.data?.message || 'Unable to save office structure');
-    } finally {
-      setIsStructureSaving(false);
-    }
-  };
-
-  const removeStructureItem = async (type, item) => {
-    const copy = type === 'module'
-      ? `Remove ${item.name}? Its teams will also be removed from the master list.`
-      : `Remove ${item.name}?`;
-    if (!window.confirm(copy)) return;
-
-    setPageMessage('');
+    setStructureSaving(true);
     setPageError('');
     try {
-      const response = type === 'module'
-        ? await deleteWorkModule(item._id)
-        : await deleteWorkTeam(item._id);
-      setStructure({ modules: response.modules || [], teams: response.teams || [] });
-      setPageMessage(response.message);
-    } catch (requestError) {
-      setPageError(requestError.response?.data?.message || 'Unable to remove office structure item');
-    }
+      const response = structureModal === 'team'
+        ? await createWorkTeam({ name: structureName })
+        : await createWorkDesignation({ name: structureName, teamName: selectedTeam });
+      setStructure({ teams: response.teams || [], designations: response.designations || [] });
+      if (structureModal === 'team') setSelectedTeam(structureName.trim());
+      setMessage(response.message);
+      setStructureModal('');
+      setStructureName('');
+    } catch (error) {
+      setPageError(error.response?.data?.message || 'Unable to update team structure');
+    } finally { setStructureSaving(false); }
   };
 
-  const handleDelete = async (employee) => {
-    setPageMessage('');
-    setPageError('');
-
-    if (!window.confirm(`Delete ${employee.name}? This employee profile will be removed.`)) return;
-
+  const removeTeam = async (team) => {
+    if (!window.confirm(`Remove ${team.name} and its designations?`)) return;
     try {
-      const response = await axios.delete(`${API_BASE_URL}/api/employees/${employee._id}`, {
-        headers: getAuthHeaders(),
-      });
-      setEmployees((previous) => previous.filter((currentEmployee) => currentEmployee._id !== employee._id));
-      setPageMessage(response.data.message);
-    } catch (requestError) {
-      setPageError(requestError.response?.data?.message || 'Failed to delete employee');
-    }
+      const response = await deleteWorkTeam(team._id);
+      setStructure({ teams: response.teams || [], designations: response.designations || [] });
+      setSelectedTeam(response.teams?.[0]?.name || '');
+      setMessage(response.message);
+    } catch (error) { setPageError(error.response?.data?.message || 'Unable to remove team'); }
   };
 
-  const downloadCsv = () => {
-    const headings = ['Name', 'Module', 'Team', 'Designation', 'Email', 'Phone', 'Address', 'Last Login', 'Created'];
-    const rows = filteredEmployees.map((employee) => [
-      employee.name,
-      employee.officeModule || employee.department,
-      employee.team,
-      employee.position,
-      employee.email,
-      employee.phone,
-      employee.address,
-      formatDate(employee.lastLoginAt),
-      formatDate(employee.createdAt),
-    ]);
-    const csv = [headings, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'employees.csv';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+  const removeDesignation = async (designation) => {
+    if (!window.confirm(`Remove ${designation.name} from ${designation.teamName}?`)) return;
+    try {
+      const response = await deleteWorkDesignation(designation._id);
+      setStructure({ teams: response.teams || [], designations: response.designations || [] });
+      setMessage(response.message);
+    } catch (error) { setPageError(error.response?.data?.message || 'Unable to remove designation'); }
+  };
+
+  const deactivate = async (employee) => {
+    if (!window.confirm(`Deactivate ${employee.name}? Their business records will remain safe.`)) return;
+    try {
+      const response = await axios.delete(`${API_BASE_URL}/api/employees/${employee._id}`, { headers: headers() });
+      setMessage(response.data.message);
+      await load();
+    } catch (error) { setPageError(error.response?.data?.message || 'Unable to deactivate employee'); }
   };
 
   return (
-    <div className="w-full space-y-4">
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex items-start gap-3">
-          <span className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-              <circle cx="9.5" cy="7" r="4" />
-              <path d="M20 8v6" />
-              <path d="M23 11h-6" />
-            </svg>
-          </span>
+    <div className="space-y-4">
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white"><Users size={20} /></span>
           <div>
-            <p className="text-xs font-semibold text-slate-500">Team management</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-950">Employees</h1>
-              <select
-                value={activeFilter}
-                onChange={(event) => setActiveFilter(event.target.value)}
-                className="rounded-full border border-transparent bg-transparent py-1 pl-2 pr-7 text-sm font-bold text-blue-700 outline-none hover:border-slate-300"
-              >
-                {filterOptions.map((filter) => <option key={filter.id} value={filter.id}>{filter.label}</option>)}
-              </select>
-            </div>
-            <p className="mt-4 text-xs font-medium text-slate-500">
-              {filteredEmployees.length} employee{filteredEmployees.length === 1 ? '' : 's'} - Sorted by latest created - Updated a few seconds ago
-            </p>
+            <p className="text-xs font-bold text-slate-500">People & access</p>
+            <h1 className="text-2xl font-bold text-slate-950">Employees</h1>
+            <p className="mt-1 text-sm text-slate-500">Manage employees, teams, designations and permission roles in one place.</p>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => openModal()}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"
-        >
-          <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14" />
-            <path d="M5 12h14" />
-          </svg>
-          Add Employee
+        <button type="button" onClick={() => openEmployee()} className="inline-flex items-center justify-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700">
+          <UserPlus size={17} /> Add Employee
         </button>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {[
-          ['Total Employees', stats.total],
-          ['Managers', stats.managers],
-          ['Recent Login', stats.recentLogin],
-          ['Modules', stats.modules],
-          ['Teams', stats.teams],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-            <p className="mt-1 text-2xl font-bold text-slate-950">{value}</p>
-          </div>
-        ))}
-      </section>
-
-      {(pageMessage || pageError) && (
-        <div className={`rounded-lg border px-4 py-3 text-sm font-bold ${pageError ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
-          {pageError || pageMessage}
+      {(message || pageError) && (
+        <div className={`flex items-center justify-between rounded-lg border px-4 py-3 text-sm font-semibold ${pageError ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+          <span>{pageError || message}</span><button type="button" onClick={() => { setMessage(''); setPageError(''); }}><X size={16} /></button>
         </div>
       )}
 
-      <section className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
-        <article className="rounded-md border border-slate-300 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-300 px-4 py-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-950">Office Modules</h2>
-              <p className="mt-1 text-xs font-medium text-slate-500">Create or remove CRM work modules.</p>
-            </div>
-            <button type="button" onClick={() => openStructureModal('module')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700">
-              Add Module
-            </button>
-          </div>
-          <div className="divide-y divide-slate-200">
-            {structure.modules.map((moduleItem) => (
-              <div key={moduleItem._id} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div>
-                  <p className="text-sm font-bold text-slate-900">{moduleItem.name}</p>
-                  <p className="text-xs font-medium text-slate-500">
-                    {structure.teams.filter((team) => team.moduleName === moduleItem.name).length} teams
-                  </p>
-                </div>
-                <button type="button" onClick={() => removeStructureItem('module', moduleItem)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100" title="Remove module">
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 6h18" />
-                    <path d="M8 6V4h8v2" />
-                    <path d="M19 6 18 20H6L5 6" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-            {structure.modules.length === 0 && (
-              <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No modules found.</p>
-            )}
-          </div>
-        </article>
-
-        <article className="rounded-md border border-slate-300 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-300 px-4 py-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-950">Teams</h2>
-              <p className="mt-1 text-xs font-medium text-slate-500">Teams are grouped under modules and used for workload tracking.</p>
-            </div>
-            <button type="button" onClick={() => openStructureModal('team')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700">
-              Add Team
-            </button>
-          </div>
-          <div className="grid gap-2 p-4 md:grid-cols-2">
-            {structure.teams.map((team) => (
-              <div key={team._id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-slate-900">{team.name}</p>
-                  <p className="truncate text-xs font-medium text-blue-700">{team.moduleName}</p>
-                </div>
-                <button type="button" onClick={() => removeStructureItem('team', team)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white text-red-700 transition hover:bg-red-50" title="Remove team">
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 6h18" />
-                    <path d="M8 6V4h8v2" />
-                    <path d="M19 6 18 20H6L5 6" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-            {structure.teams.length === 0 && (
-              <p className="col-span-full px-4 py-8 text-center text-sm font-semibold text-slate-500">No teams found.</p>
-            )}
-          </div>
-        </article>
+      <section className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+        <button type="button" onClick={() => setActiveView('employees')} className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold ${activeView === 'employees' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          <Users size={16} /> Employees <span className={`rounded-full px-2 py-0.5 text-xs ${activeView === 'employees' ? 'bg-white/20' : 'bg-slate-100'}`}>{employees.length}</span>
+        </button>
+        <button type="button" onClick={() => setActiveView('structure')} className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold ${activeView === 'structure' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          <BriefcaseBusiness size={16} /> Teams & Designations <span className={`rounded-full px-2 py-0.5 text-xs ${activeView === 'structure' ? 'bg-white/20' : 'bg-slate-100'}`}>{structure.teams.length}</span>
+        </button>
+        <span className="ml-auto hidden items-center gap-2 px-3 text-xs font-semibold text-slate-500 sm:flex"><ShieldCheck size={14} /> {roles.length + 1} permission roles</span>
       </section>
 
-      <section className="overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-300 bg-white px-4 py-3 xl:flex-row xl:items-center xl:justify-end">
-          <label className="relative block w-full xl:w-80">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
-              <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="2">
-                <circle cx="11" cy="11" r="7" />
-                <path d="m20 20-3.5-3.5" />
-              </svg>
-            </span>
-            <input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search this list..."
-              className="h-9 w-full rounded-lg border border-slate-400 bg-white py-2 pl-9 pr-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" title="Refresh" onClick={fetchEmployees} className={iconButtonClass}>
-              <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-                <path d="M3 21v-5h5" />
-                <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-                <path d="M21 3v5h-5" />
-              </svg>
-            </button>
-            <button type="button" title="Export employees" onClick={downloadCsv} className={iconButtonClass}>
-              <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3v12" />
-                <path d="m7 10 5 5 5-5" />
-                <path d="M4 21h16" />
-              </svg>
-            </button>
+      {activeView === 'structure' && <section className="grid overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm lg:grid-cols-[18rem_1fr]">
+        <div className="border-b border-slate-200 lg:border-b-0 lg:border-r">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div><h2 className="font-bold text-slate-950">Teams</h2><p className="text-xs text-slate-500">Company work groups</p></div>
+            <button type="button" onClick={() => { setStructureModal('team'); setStructureName(''); }} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white"><Plus size={14} /> Add Team</button>
+          </div>
+          <div className="max-h-72 overflow-y-auto p-2">
+            {structure.teams.map((team) => (
+              <div key={team._id} className={`group flex items-center rounded-lg ${selectedTeam === team.name ? 'bg-blue-50 text-blue-800' : 'text-slate-700 hover:bg-slate-50'}`}>
+                <button type="button" onClick={() => setSelectedTeam(team.name)} className="flex min-w-0 flex-1 items-center justify-between px-3 py-2.5 text-left text-sm font-bold">
+                  <span className="truncate">{team.name}</span><ChevronRight size={15} />
+                </button>
+                <button type="button" onClick={() => removeTeam(team)} className="mr-2 hidden h-7 w-7 items-center justify-center rounded text-red-500 hover:bg-red-50 group-hover:flex" title="Remove team"><Trash2 size={14} /></button>
+              </div>
+            ))}
           </div>
         </div>
+        <div>
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div><h2 className="font-bold text-slate-950">{selectedTeam || 'Select a team'} Designations</h2><p className="text-xs text-slate-500">Positions available inside this team</p></div>
+            <button type="button" disabled={!selectedTeam} onClick={() => { setStructureModal('designation'); setStructureName(''); }} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700 disabled:opacity-40"><Plus size={14} /> Add Designation</button>
+          </div>
+          <div className="flex min-h-36 flex-wrap content-start gap-2 p-4">
+            {selectedDesignations.map((designation) => (
+              <span key={designation._id} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+                {designation.name}
+                <button type="button" onClick={() => removeDesignation(designation)} className="text-slate-400 hover:text-red-600"><X size={14} /></button>
+              </span>
+            ))}
+            {selectedTeam && !selectedDesignations.length && <p className="text-sm text-slate-500">No designations added yet.</p>}
+          </div>
+        </div>
+      </section>}
 
+      {activeView === 'employees' && <section className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-3 lg:flex-row lg:items-center">
+          <label className="relative flex-1 lg:max-w-sm"><Search size={16} className="absolute left-3 top-2.5 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search employees..." className={`${inputClass} py-2 pl-9`} /></label>
+          <select value={communityFilter} onChange={(e) => setCommunityFilter(e.target.value)} className={`${inputClass} py-2 lg:w-44`}><option value="all">All Communities</option>{COMMUNITIES.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select>
+          <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className={`${inputClass} py-2 lg:w-44`}><option value="all">All Teams</option>{structure.teams.map((team) => <option key={team._id} value={team.name}>{team.name}</option>)}</select>
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className={`${inputClass} py-2 lg:w-52`}><option value="all">All CRM Roles</option>{roles.map((role) => <option key={role.roleKey} value={role.roleKey}>{role.roleLabel}</option>)}</select>
+          <span className="text-xs font-bold text-slate-500">{filtered.length} results</span>
+        </div>
         <div className="overflow-x-auto">
-          <table className="min-w-[86rem] w-full table-fixed border-collapse text-left text-sm">
-            <thead className="bg-slate-50 text-slate-700">
-              <tr>
-                <th className="w-64 border-b border-r border-slate-300 px-4 py-2 font-bold">Employee Name</th>
-                <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">Module</th>
-                <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">Team</th>
-                <th className="w-40 border-b border-r border-slate-300 px-4 py-2 font-bold">Designation</th>
-                <th className="w-40 border-b border-r border-slate-300 px-4 py-2 font-bold">CRM Role</th>
-                <th className="w-64 border-b border-r border-slate-300 px-4 py-2 font-bold">Email</th>
-                <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">Phone</th>
-                <th className="w-48 border-b border-r border-slate-300 px-4 py-2 font-bold">Address</th>
-                <th className="w-40 border-b border-r border-slate-300 px-4 py-2 font-bold">Last Login</th>
-                <th className="w-28 border-b border-slate-300 px-4 py-2 text-right font-bold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEmployees.map((employee) => (
-                <tr key={employee._id} className="bg-white transition hover:bg-blue-50/40">
-                  <td className="border-b border-r border-slate-200 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      {employee.imageUrl ? (
-                        <img src={getAssetUrl(employee.imageUrl)} alt={employee.name} className="h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-slate-100" />
-                      ) : (
-                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${getAvatarClass(employee.name)}`}>
-                          {getInitials(employee.name)}
-                        </span>
-                      )}
-                      <span className="min-w-0">
-                        <span className="block truncate font-bold text-blue-700">{employee.name}</span>
-                        <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">{employee.position || 'Team member'}</span>
-                      </span>
-                    </div>
-                  </td>
-                  <td className="border-b border-r border-slate-200 px-4 py-3">
-                    <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
-                      {employee.officeModule || employee.department || 'Sales'}
-                    </span>
-                  </td>
-                  <td className="border-b border-r border-slate-200 px-4 py-3 font-semibold text-slate-700">{employee.team || '-'}</td>
-                  <td className="border-b border-r border-slate-200 px-4 py-3 font-semibold text-slate-700">{employee.position || 'Team member'}</td>
-                  <td className="border-b border-r border-slate-200 px-4 py-3">
-                    <span className="inline-flex rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">
-                      {crmRoleOptions.find(([value]) => value === employee.crmRole)?.[1] || employee.crmRole || 'Employee'}
-                    </span>
-                  </td>
-                  <td className="border-b border-r border-slate-200 px-4 py-3 font-semibold text-slate-700">{employee.email || '-'}</td>
-                  <td className="border-b border-r border-slate-200 px-4 py-3 text-slate-600">{employee.phone || '-'}</td>
-                  <td className="border-b border-r border-slate-200 px-4 py-3 text-slate-600">{employee.address || '-'}</td>
-                  <td className="border-b border-r border-slate-200 px-4 py-3 text-slate-600">{formatDate(employee.lastLoginAt)}</td>
-                  <td className="border-b border-slate-200 px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        title="Edit"
-                        onClick={() => openModal(employee)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100"
-                      >
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 20h9" />
-                          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        title="Delete"
-                        onClick={() => handleDelete(employee)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100"
-                      >
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 6h18" />
-                          <path d="M8 6V4h8v2" />
-                          <path d="M19 6 18 20H6L5 6" />
-                          <path d="M10 11v5" />
-                          <path d="M14 11v5" />
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
+          <table className="min-w-[74rem] w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>
+              <th className="px-4 py-3">Employee</th><th className="px-4 py-3">Communities</th><th className="px-4 py-3">Team</th><th className="px-4 py-3">Designation</th><th className="px-4 py-3">CRM Role</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Last Login</th><th className="px-4 py-3 text-right">Actions</th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map((employee) => (
+                <tr key={employee._id} className="hover:bg-blue-50/30">
+                  <td className="px-4 py-3"><div className="flex items-center gap-3">{employee.imageUrl ? <img src={getAssetUrl(employee.imageUrl)} alt="" className="h-9 w-9 rounded-full object-cover" /> : <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{initials(employee.name)}</span>}<div><p className="font-bold text-slate-900">{employee.name}</p><p className="text-xs text-slate-500">{employee.email}</p></div></div></td>
+                  <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{employee.communities?.map((key) => { const community = COMMUNITIES.find((item) => item.key === key); return <span key={key} className={`rounded-full border px-2 py-1 text-[11px] font-bold ${community?.tone || 'border-slate-200 bg-slate-50'}`}>{community?.label || key}</span>; })}</div></td>
+                  <td className="px-4 py-3 font-semibold text-slate-700">{employee.team || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700">{employee.position || '—'}</td>
+                  <td className="px-4 py-3"><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">{getRoleLabel(employee.roleKey || employee.crmRole)}</span></td>
+                  <td className="px-4 py-3"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold capitalize text-emerald-700">{employee.accountStatus || 'active'}</span></td>
+                  <td className="px-4 py-3 text-xs font-medium text-slate-500">{formatDate(employee.lastLoginAt)}</td>
+                  <td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => openEmployee(employee)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:text-blue-700" title="Edit"><Edit3 size={15} /></button><button type="button" onClick={() => deactivate(employee)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 text-red-500 hover:bg-red-50" title="Deactivate"><Trash2 size={15} /></button></div></td>
                 </tr>
               ))}
-
-              {!isLoading && filteredEmployees.length === 0 && (
-                <tr>
-                  <td colSpan="10" className="h-[28rem] px-4 py-20 text-center">
-                    <div className="mx-auto flex max-w-md flex-col items-center">
-                      <span className="flex h-28 w-28 items-center justify-center rounded-full bg-indigo-100 text-indigo-500">
-                        <svg viewBox="0 0 24 24" className="h-16 w-16 fill-none stroke-current" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-                          <circle cx="9.5" cy="7" r="4" />
-                          <path d="M20 8v6" />
-                          <path d="M23 11h-6" />
-                        </svg>
-                      </span>
-                      <h2 className="mt-6 text-xl font-semibold text-slate-700">Build your sales team</h2>
-                      <p className="mt-3 text-sm text-slate-500">Add employees so client rows can be assigned and tracked cleanly.</p>
-                      <button type="button" onClick={() => openModal()} className="mt-5 rounded-full bg-blue-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-blue-700">
-                        Add Employee
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-
-              {isLoading && (
-                <tr>
-                  <td colSpan="10" className="px-4 py-16 text-center text-sm font-semibold text-slate-500">
-                    Loading employees...
-                  </td>
-                </tr>
-              )}
+              {!loading && !filtered.length && <tr><td colSpan="8" className="px-4 py-14 text-center text-sm font-semibold text-slate-500">No employees match these filters.</td></tr>}
+              {loading && <tr><td colSpan="8" className="px-4 py-14 text-center text-sm font-semibold text-slate-500">Loading employees...</td></tr>}
             </tbody>
           </table>
         </div>
-      </section>
+      </section>}
 
-      <Modal
-        isOpen={modalIsOpen}
-        onRequestClose={closeModal}
-        contentLabel={isEditing ? 'Edit Employee' : 'Register Employee'}
-        overlayClassName="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl outline-none"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Team profile</p>
-            <h2 className="text-lg font-bold text-slate-950">
-              {isEditing ? 'Edit employee' : 'New employee'}
-            </h2>
+      <Modal isOpen={employeeModal} onRequestClose={() => setEmployeeModal(false)} overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl outline-none">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-blue-600">Employee profile</p><h2 className="text-xl font-bold text-slate-950">{editingId ? 'Edit Employee' : 'Add Employee'}</h2></div><button type="button" onClick={() => setEmployeeModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={19} /></button></div>
+        <form onSubmit={submitEmployee} className="space-y-5 p-5">
+          <section><h3 className="mb-3 text-sm font-bold text-slate-900">Basic information</h3><div className="grid gap-4 sm:grid-cols-2">
+            <label><span className={labelClass}>Full Name</span><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
+            <label><span className={labelClass}>Official Email</span><input type="email" className={inputClass} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label>
+            <label><span className={labelClass}>Phone Number</span><div className="flex"><span className="flex items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 text-sm font-bold text-slate-600">+91</span><input className={`${inputClass} rounded-l-none`} inputMode="numeric" maxLength="10" pattern="\d{10}" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} required /></div></label>
+            <label><span className={labelClass}>{editingId ? 'New Password (optional)' : 'Password'}</span><PasswordInput className={inputClass} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={8} required={!editingId} /></label>
+            <label className="sm:col-span-2"><span className={labelClass}>Address</span><input className={inputClass} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} required /></label>
+          </div></section>
+
+          <section className="border-t border-slate-200 pt-5"><h3 className="mb-3 text-sm font-bold text-slate-900">Team & access</h3><div className="grid gap-4 sm:grid-cols-3">
+            <label><span className={labelClass}>Team</span><select className={inputClass} value={form.team} onChange={(e) => changeTeam(e.target.value)} required><option value="">Select team</option>{structure.teams.map((team) => <option key={team._id} value={team.name}>{team.name}</option>)}</select></label>
+            <label><span className={labelClass}>Designation</span><select className={inputClass} value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} required><option value="">Select designation</option>{formDesignations.map((item) => <option key={item._id} value={item.name}>{item.name}</option>)}</select></label>
+            <label><span className={labelClass}>CRM Permission Role</span><select className={inputClass} value={form.crmRole} onChange={(e) => setForm({ ...form, crmRole: e.target.value })}>{roles.map((role) => <option key={role.roleKey} value={role.roleKey}>{role.roleLabel}</option>)}</select></label>
           </div>
-          <button type="button" onClick={closeModal} className={iconButtonClass} aria-label="Close employee form">
-            <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+          <fieldset className="mt-4"><legend className={labelClass}>Community Access</legend>
+            <label className="mb-2 flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700"><input ref={selectAllRef} type="checkbox" checked={form.communities.length === COMMUNITIES.length} onChange={(e) => setForm({ ...form, communities: e.target.checked ? COMMUNITIES.map((item) => item.key) : [] })} className="h-4 w-4 rounded" /> Select All Communities</label>
+            <div className="grid gap-2 sm:grid-cols-3">{COMMUNITIES.map((community) => <label key={community.key} className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm font-bold ${form.communities.includes(community.key) ? community.tone : 'border-slate-200 text-slate-600'}`}><input type="checkbox" checked={form.communities.includes(community.key)} onChange={() => toggleCommunity(community.key)} className="h-4 w-4 rounded" />{community.label}</label>)}</div>
+          </fieldset></section>
 
-        <div className="p-5">
-          <label htmlFor="employee-image" className="flex cursor-pointer items-center gap-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 transition hover:border-blue-300 hover:bg-blue-50/50">
-            {imagePreview ? (
-              <img src={imagePreview} alt="Preview" className="h-14 w-14 rounded-full object-cover" />
-            ) : (
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-blue-700">+</span>
-            )}
-            <span>
-              <span className="block text-sm font-bold text-slate-800">
-                {imagePreview ? 'Change profile photo' : 'Upload profile photo'}
-              </span>
-              <span className="mt-1 block text-xs font-medium text-slate-500">PNG or JPG, optional</span>
-            </span>
-            <input id="employee-image" type="file" name="image" accept="image/*" className="hidden" onChange={handleImageChange} />
-          </label>
-
-          <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label>
-                <span className={labelClass}>Name</span>
-                <input className={inputClass} type="text" name="name" placeholder="Full name" value={formData.name} onChange={handleChange} required />
-              </label>
-              <label>
-                <span className={labelClass}>Office module</span>
-                <select className={inputClass} name="officeModule" value={formData.officeModule} onChange={handleChange}>
-                  {moduleOptions.map((moduleName) => <option key={moduleName}>{moduleName}</option>)}
-                </select>
-              </label>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label>
-                <span className={labelClass}>Team</span>
-                <select className={inputClass} name="team" value={formData.team} onChange={handleChange}>
-                  <option value="">Select team</option>
-                  {teamOptions.map((team) => <option key={team._id} value={team.name}>{team.name}</option>)}
-                </select>
-              </label>
-              <label>
-                <span className={labelClass}>Designation</span>
-                <input className={inputClass} type="text" name="position" placeholder="e.g. Sales Manager" value={formData.position} onChange={handleChange} required />
-              </label>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label>
-                <span className={labelClass}>CRM Role</span>
-                <select className={inputClass} name="crmRole" value={formData.crmRole} onChange={handleChange}>
-                  {crmRoleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </label>
-              <label>
-                <span className={labelClass}>Email</span>
-                <input className={inputClass} type="email" name="email" placeholder="name@company.com" value={formData.email} onChange={handleChange} required />
-              </label>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label>
-                <span className={labelClass}>Password</span>
-                <PasswordInput className={inputClass} name="password" placeholder={isEditing ? 'Leave blank to keep current password' : 'Minimum 8 characters'} value={formData.password} onChange={handleChange} required={!isEditing} minLength={8} />
-              </label>
-              <label>
-                <span className={labelClass}>Phone</span>
-                <input className={inputClass} type="text" name="phone" placeholder="+91 ..." value={formData.phone} onChange={handleChange} required />
-              </label>
-            </div>
-            <label className="block">
-              <span className={labelClass}>Address</span>
-              <input className={inputClass} type="text" name="address" placeholder="City, State" value={formData.address} onChange={handleChange} required />
-            </label>
-            <label className="block">
-              <span className={labelClass}>Custom module permissions</span>
-              <input className={inputClass} type="text" name="permissions" placeholder="Optional: sales,marketing,documents" value={formData.permissions} onChange={handleChange} />
-            </label>
-
-            {success && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{success}</p>}
-            {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p>}
-
-            <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-              <button type="button" onClick={closeModal} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100">
-                Cancel
-              </button>
-              <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:bg-slate-300">
-                {isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Add employee'}
-              </button>
-            </div>
-          </form>
-        </div>
+          <label className="block rounded-lg border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-600">Profile photo (optional)<input type="file" accept="image/png,image/jpeg" className="mt-2 block text-xs" onChange={(e) => { const file = e.target.files[0] || null; setForm({ ...form, image: file }); setImagePreview(file ? URL.createObjectURL(file) : imagePreview); }} />{imagePreview && <img src={imagePreview} alt="Preview" className="mt-2 h-12 w-12 rounded-full object-cover" />}</label>
+          {formError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{formError}</p>}
+          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4"><button type="button" onClick={() => setEmployeeModal(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Cancel</button><button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white disabled:opacity-50">{saving ? 'Saving...' : editingId ? 'Save Changes' : 'Add Employee'}</button></div>
+        </form>
       </Modal>
 
-      <Modal
-        isOpen={Boolean(structureModal)}
-        onRequestClose={closeStructureModal}
-        contentLabel={structureModal === 'module' ? 'Add Module' : 'Add Team'}
-        overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
-        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl outline-none"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Office structure</p>
-            <h2 className="text-lg font-bold text-slate-950">
-              {structureModal === 'module' ? 'Add module' : 'Add team'}
-            </h2>
-          </div>
-          <button type="button" onClick={closeStructureModal} className={iconButtonClass} aria-label="Close office structure form">
-            <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <form onSubmit={submitStructure} className="space-y-4 p-5">
-          {structureModal === 'team' && (
-            <label className="block">
-              <span className={labelClass}>Module</span>
-              <select
-                className={inputClass}
-                value={structureForm.moduleName}
-                onChange={(event) => setStructureForm((previous) => ({ ...previous, moduleName: event.target.value }))}
-              >
-                {moduleOptions.map((moduleName) => <option key={moduleName}>{moduleName}</option>)}
-              </select>
-            </label>
-          )}
-          <label className="block">
-            <span className={labelClass}>{structureModal === 'module' ? 'Module name' : 'Team name'}</span>
-            <input
-              className={inputClass}
-              value={structureForm.name}
-              onChange={(event) => setStructureForm((previous) => ({ ...previous, name: event.target.value }))}
-              placeholder={structureModal === 'module' ? 'e.g. Customer Success' : 'e.g. Onboarding Team'}
-              required
-            />
-          </label>
-          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <button type="button" onClick={closeStructureModal} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100">
-              Cancel
-            </button>
-            <button type="submit" disabled={isStructureSaving} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:bg-slate-300">
-              {isStructureSaving ? 'Saving...' : structureModal === 'module' ? 'Add Module' : 'Add Team'}
-            </button>
-          </div>
-        </form>
+      <Modal isOpen={Boolean(structureModal)} onRequestClose={() => setStructureModal('')} overlayClassName="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4" className="w-full max-w-md rounded-2xl bg-white shadow-2xl outline-none">
+        <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold text-slate-950">Add {structureModal === 'team' ? 'Team' : 'Designation'}</h2><p className="mt-1 text-xs text-slate-500">{structureModal === 'team' ? 'Default designations will be created automatically.' : `This designation will be added under ${selectedTeam}.`}</p></div>
+        <form onSubmit={submitStructure} className="space-y-4 p-5"><label><span className={labelClass}>{structureModal === 'team' ? 'Team name' : 'Designation name'}</span><input autoFocus className={inputClass} value={structureName} onChange={(e) => setStructureName(e.target.value)} placeholder={structureModal === 'team' ? 'e.g. Creative Team' : 'e.g. Senior Designer'} required /></label><div className="flex justify-end gap-2"><button type="button" onClick={() => setStructureModal('')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Cancel</button><button type="submit" disabled={structureSaving} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white">{structureSaving ? 'Adding...' : 'Add'}</button></div></form>
       </Modal>
     </div>
   );

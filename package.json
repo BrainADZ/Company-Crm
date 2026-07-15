@@ -1,0 +1,13 @@
+{
+  "name": "company-crm",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names backend,dashboard --prefix-colors blue,green \"npm run dev:backend\" \"npm run dev:dashboard\"",
+    "dev:backend": "npm --prefix crm-backend run dev",
+    "dev:dashboard": "npm --prefix crm-dashboard run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

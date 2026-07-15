@@ -19,6 +19,7 @@ import {
   FolderOpen,
   ReceiptText,
   ShieldCheck,
+  Network,
 } from 'lucide-react';
 
 const projectWorkItems = [
@@ -83,6 +84,11 @@ const navItems = [
     icon: FolderOpen,
   },
   {
+    to: '/dashboard/departments',
+    label: 'Departments',
+    icon: Network,
+  },
+  {
     to: '/dashboard/employees',
     label: 'Employees',
     icon: UserRoundCog,
@@ -139,7 +145,7 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
                 Company CRM
               </span>
               <span className="mt-0.5 block truncate text-xs text-blue-100/75">
-                Admin Workspace
+                Super Admin Workspace
               </span>
             </span>
           )}
@@ -300,10 +306,10 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
           {!collapsed && (
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold">
-                Administrator
+                Super Admin
               </span>
               <span className="block truncate text-xs text-blue-100/70">
-                CRM Admin
+                Full Access
               </span>
             </span>
           )}

@@ -26,6 +26,9 @@ const rowAssignmentSchema = new mongoose.Schema({
 }, { _id: false });
 
 const clientDatasetSchema = new mongoose.Schema({
+  communityKey: { type: String, required: true, default: 'live', index: true },
+  officeModule: { type: String, default: 'Sales', trim: true, index: true },
+  team: { type: String, default: '', trim: true, index: true },
   name: { type: String, required: true, trim: true },
   year: { type: String, trim: true },
   label: { type: String, default: 'Prospect List', trim: true },
@@ -43,5 +46,7 @@ const clientDatasetSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+clientDatasetSchema.index({ communityKey: 1, createdAt: -1 });
 
 module.exports = mongoose.model('ClientDataset', clientDatasetSchema);

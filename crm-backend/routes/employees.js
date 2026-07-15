@@ -4,6 +4,7 @@ const multer = require('multer');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
 const { CRM_ROLE_KEYS, COMMUNITY_KEYS } = require('../config/accessControl');
+const OfficeStructure = require('../models/OfficeStructure');
 
 const router = express.Router();
 
@@ -19,8 +20,14 @@ const normalizeList = (value) => {
 };
 
 const normalizeCommunities = (value) => {
-  const requested = value === undefined ? COMMUNITY_KEYS : normalizeList(value);
+  const requested = value === undefined ? [] : normalizeList(value);
   return [...new Set(requested.filter((key) => COMMUNITY_KEYS.includes(key)))];
+};
+
+const normalizeIndianPhone = (value) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  const localNumber = digits.startsWith('91') && digits.length === 12 ? digits.slice(2) : digits;
+  return /^\d{10}$/.test(localNumber) ? `+91${localNumber}` : '';
 };
 
 const publicEmployee = (employee) => ({
@@ -29,11 +36,14 @@ const publicEmployee = (employee) => ({
   email: employee.email,
   role: employee.role,
   crmRole: employee.crmRole || employee.role,
+  roleKey: employee.crmRole && employee.crmRole !== 'employee' ? employee.crmRole : (employee.roleKey || employee.role),
   department: employee.officeModule || employee.department || '',
   officeModule: employee.officeModule || employee.department || '',
   team: employee.team || '',
   permissions: employee.permissions || [],
   communities: employee.communities || [],
+  accountStatus: employee.accountStatus || 'active',
+  employeeId: employee.employeeId || '',
   phone: employee.phone || '',
   address: employee.address || '',
   imageUrl: employee.imageUrl || '',
@@ -74,7 +84,7 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     if (requireSuperAdmin(req, res)) return;
 
-    const employees = await User.find({ role: 'employee' }).select('-password -securityAnswerHash').sort({ createdAt: -1 });
+    const employees = await User.find({ role: 'employee', isDeleted: { $ne: true } }).select('-password -securityAnswerHash').sort({ createdAt: -1 });
     res.json(employees.map(publicEmployee));
   } catch (err) {
     console.error(err.message);
@@ -92,6 +102,13 @@ router.post('/register', authMiddleware, upload.single('image'), async (req, res
     if (crmRole === 'super_admin' || (crmRole && !CRM_ROLE_KEYS.includes(crmRole))) {
       return res.status(400).json({ message: 'Invalid employee CRM role' });
     }
+
+    const selectedCommunities = normalizeCommunities(communities);
+    if (!selectedCommunities.length) return res.status(400).json({ message: 'Select at least one community' });
+    if (!team || !(await OfficeStructure.exists({ type: 'team', name: team.trim() }))) return res.status(400).json({ message: 'Select a valid team' });
+    if (!position || !(await OfficeStructure.exists({ type: 'designation', name: position.trim(), teamName: team.trim() }))) return res.status(400).json({ message: 'Select a valid designation for this team' });
+    const normalizedPhone = normalizeIndianPhone(phone);
+    if (!normalizedPhone) return res.status(400).json({ message: 'Phone number must contain exactly 10 digits after +91' });
 
     // Validate input
     if (!name || !email || !password || !phone || !address || !position) {
@@ -120,13 +137,17 @@ router.post('/register', authMiddleware, upload.single('image'), async (req, res
       email: normalizedEmail,
       password: hashedPassword,
       role: 'employee',
+      userType: 'employee',
+      roleKey: crmRole || 'employee',
       crmRole: crmRole || 'employee',
-      department: (officeModule || department)?.trim() || 'Sales',
-      officeModule: (officeModule || department)?.trim() || 'Sales',
+      department: '',
+      officeModule: '',
       team: team?.trim() || '',
       permissions: Array.isArray(permissions) ? permissions : String(permissions || '').split(',').map((item) => item.trim()).filter(Boolean),
-      communities: normalizeCommunities(communities),
-      phone: phone.trim(),
+      communities: selectedCommunities,
+      primaryCommunity: selectedCommunities[0],
+      accountStatus: 'active',
+      phone: normalizedPhone,
       address: address.trim(),
       imageUrl: req.file ? req.file.path : null,
       position: position.trim(),
@@ -150,13 +171,18 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
     console.log(`Received request to delete employee with ID: ${employeeId}`); // Log the ID to check
 
-    const employee = await User.findByIdAndDelete(employeeId);
+    const employee = await User.findById(employeeId);
 
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found' });
     }
 
-    res.status(200).json({ message: 'Employee deleted successfully' });
+    employee.isDeleted = true;
+    employee.deletedAt = new Date();
+    employee.accountStatus = 'inactive';
+    employee.sessionVersion = (employee.sessionVersion || 0) + 1;
+    await employee.save();
+    res.status(200).json({ message: 'Employee deactivated successfully' });
   } catch (err) {
     console.error('Error during deletion:', err.message);
     res.status(500).send('Server error');
@@ -173,6 +199,7 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
     if (crmRole === 'super_admin' || (crmRole && !CRM_ROLE_KEYS.includes(crmRole))) {
       return res.status(400).json({ message: 'Invalid employee CRM role' });
     }
+
 
     // Find the employee by ID
     const employee = await User.findById(req.params.id);
@@ -201,19 +228,34 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
 
     // Update employee fields
     employee.name = name?.trim() || employee.name;
-    employee.phone = phone?.trim() || employee.phone;
+    if (phone) {
+      const normalizedPhone = normalizeIndianPhone(phone);
+      if (!normalizedPhone) return res.status(400).json({ message: 'Phone number must contain exactly 10 digits after +91' });
+      employee.phone = normalizedPhone;
+    }
     employee.address = address?.trim() || employee.address;
     employee.position = position?.trim() || employee.position;
-    employee.department = (officeModule || department)?.trim() || employee.department;
-    employee.officeModule = (officeModule || department)?.trim() || employee.officeModule || employee.department;
-    employee.team = team?.trim() || employee.team;
-    if (crmRole) employee.crmRole = crmRole;
+    const nextTeam = team?.trim() || employee.team;
+    const nextDesignation = position?.trim() || employee.position;
+    if (!(await OfficeStructure.exists({ type: 'team', name: nextTeam }))) return res.status(400).json({ message: 'Select a valid team' });
+    if (!(await OfficeStructure.exists({ type: 'designation', name: nextDesignation, teamName: nextTeam }))) return res.status(400).json({ message: 'Select a valid designation for this team' });
+    employee.department = '';
+    employee.officeModule = '';
+    employee.team = nextTeam;
+    employee.position = nextDesignation;
+    if (crmRole) { employee.crmRole = crmRole; employee.roleKey = crmRole; }
     if (permissions !== undefined) {
       employee.permissions = Array.isArray(permissions)
         ? permissions
         : String(permissions || '').split(',').map((item) => item.trim()).filter(Boolean);
     }
-    if (communities !== undefined) employee.communities = normalizeCommunities(communities);
+    if (communities !== undefined) {
+      const selectedCommunities = normalizeCommunities(communities);
+      if (!selectedCommunities.length) return res.status(400).json({ message: 'Select at least one community' });
+      employee.communities = selectedCommunities;
+      if (!selectedCommunities.includes(employee.primaryCommunity)) employee.primaryCommunity = selectedCommunities[0];
+    }
+    employee.sessionVersion = (employee.sessionVersion || 0) + 1;
 
     if (password) {
       if (password.length < 8) {
