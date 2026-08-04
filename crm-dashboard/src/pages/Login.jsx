@@ -151,6 +151,20 @@ const Login = () => {
                 {!loading && <ArrowRight size={17} />}
               </button>
             </form>
+
+            <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+                Demo admin login
+              </p>
+              <div className="mt-2 space-y-1 text-sm text-slate-700">
+                <p>
+                  <span className="font-semibold">Email:</span> admin@brainadz.com
+                </p>
+                <p>
+                  <span className="font-semibold">Password:</span> admin123456
+                </p>
+              </div>
+            </div>
           </div>
 
           <p className="mt-5 text-center text-xs font-medium text-slate-400">
