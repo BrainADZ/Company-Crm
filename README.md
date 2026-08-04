@@ -7,12 +7,14 @@ This project is a **Customer Relationship Management (CRM) system** built using 
 ## Features
 
 ### Admin Dashboard
+
 - **Client Management**: Admins can view, add, update, and delete clients.
 - **Employee Management**: Admins can manage employee records.
 - **Client Assignment**: Admins can assign clients to specific employees for follow-up.
 - **Task Review**: Admins can review comments and statuses submitted by employees regarding client interactions.
 
 ### Employee Dashboard
+
 - **Task Management**: Employees can view tasks assigned to them.
 - **Client Interaction**: Employees can submit comments, statuses, and screenshots related to client interactions.
 - **Task History**: Employees can view their previous comments and tasks to track their work history.
@@ -20,12 +22,14 @@ This project is a **Customer Relationship Management (CRM) system** built using 
 ## File Structure
 
 ### Frontend
+
 - **`src/components/`**: Contains reusable components such as Navbar, Sidebar, and PrivateRoute.
 - **`src/pages/`**: Contains main pages for both Admin and Employee views, including login pages.
 - **`src/assets/`**: Contains images and other assets used in the project.
 - **`src/Style.css`**: Contains global styling for the application.
 
 ### Backend
+
 - **`routes/`**: Contains the routes for authentication, clients, and employees.
 - **`models/`**: Contains Mongoose models for User and Client.
 - **`middleware/`**: Contains middleware for authentication.
@@ -34,6 +38,7 @@ This project is a **Customer Relationship Management (CRM) system** built using 
 ## Installation
 
 ### Prerequisites
+
 - Node.js
 - MongoDB
 
@@ -43,6 +48,7 @@ This project is a **Customer Relationship Management (CRM) system** built using 
    ```bash
    git clone https://github.com/yourusername/your-crm-repo.git
    cd your-crm-repo
+   ```
 2. Install dependencies for both the frontend and backend:
 
    ```bash
@@ -53,12 +59,16 @@ This project is a **Customer Relationship Management (CRM) system** built using 
    # Install frontend dependencies
      cd ../crm-admin-dashboard
      npm install
- 
+
+   ```
+
 3. Create a .env file in the crm-backend directory and configure your environment variables:
 
    ```bash
    JWT_SECRET=your_jwt_secret
    MONGO_URI=your_mongodb_uri
+
+   ```
 
 4. Start the development servers:
 
@@ -71,9 +81,12 @@ This project is a **Customer Relationship Management (CRM) system** built using 
    cd ../crm-admin-dashboard
    npm start
 
+   ```
+
 5. Open your browser and navigate to http://localhost:3000 to access the application.
 
 ## Usage
+
 Admin: Log in using admin credentials to access the admin dashboard, where you can manage clients, employees, and assignments.
 Employee: Log in using employee credentials to access the employee dashboard, where you can manage your tasks and view client interaction history.
 
@@ -86,4 +99,5 @@ Employee: Log in using employee credentials to access the employee dashboard, wh
 5. Open a Pull Request.
 
 ## License
+
 This project is licensed under the MIT License. See the LICENSE file for details.

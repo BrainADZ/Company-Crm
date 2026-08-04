@@ -6,22 +6,37 @@ import {
   listBusinessResource,
 } from '../services/businessApi';
 
-const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+const inputClass =
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 const labelClass = 'mb-1.5 block text-xs font-bold text-slate-600';
-const iconButtonClass = 'inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 hover:text-blue-700';
+const iconButtonClass =
+  'inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 hover:text-blue-700';
 
-const getInitialForm = (fields) => fields.reduce((accumulator, field) => ({
-  ...accumulator,
-  [field.name]: field.defaultValue ?? '',
-}), {});
+const getInitialForm = (fields) =>
+  fields.reduce(
+    (accumulator, field) => ({
+      ...accumulator,
+      [field.name]: field.defaultValue ?? '',
+    }),
+    {},
+  );
 
 const Field = ({ field, value, onChange }) => {
   if (field.type === 'select') {
     return (
       <label className={field.full ? 'block sm:col-span-2' : 'block'}>
         <span className={labelClass}>{field.label}</span>
-        <select className={inputClass} value={value} onChange={(event) => onChange(field.name, event.target.value)} required={field.required}>
-          {(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+        <select
+          className={inputClass}
+          value={value}
+          onChange={(event) => onChange(field.name, event.target.value)}
+          required={field.required}
+        >
+          {(field.options || []).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
         </select>
       </label>
     );
@@ -31,7 +46,13 @@ const Field = ({ field, value, onChange }) => {
     return (
       <label className="block sm:col-span-2">
         <span className={labelClass}>{field.label}</span>
-        <textarea className={`${inputClass} min-h-24 resize-y`} value={value} onChange={(event) => onChange(field.name, event.target.value)} required={field.required} placeholder={field.placeholder} />
+        <textarea
+          className={`${inputClass} min-h-24 resize-y`}
+          value={value}
+          onChange={(event) => onChange(field.name, event.target.value)}
+          required={field.required}
+          placeholder={field.placeholder}
+        />
       </label>
     );
   }
@@ -43,7 +64,12 @@ const Field = ({ field, value, onChange }) => {
         className={inputClass}
         type={field.type || 'text'}
         value={value}
-        onChange={(event) => onChange(field.name, field.type === 'number' ? Number(event.target.value) : event.target.value)}
+        onChange={(event) =>
+          onChange(
+            field.name,
+            field.type === 'number' ? Number(event.target.value) : event.target.value,
+          )
+        }
         required={field.required}
         placeholder={field.placeholder}
       />
@@ -68,7 +94,13 @@ const Modal = ({ title, children, onClose }) => (
           <h2 className="text-lg font-bold text-slate-950">{title}</h2>
         </div>
         <button type="button" onClick={onClose} className={iconButtonClass} aria-label="Close form">
-          <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4 fill-none stroke-current"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
@@ -176,11 +208,19 @@ const BusinessResourcePage = ({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setIsFormOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700">
+          <button
+            type="button"
+            onClick={() => setIsFormOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700"
+          >
             <Plus size={16} strokeWidth={1.9} />
             {createLabel}
           </button>
-          <button type="button" onClick={loadItems} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">
+          <button
+            type="button"
+            onClick={loadItems}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+          >
             <RefreshCw size={16} strokeWidth={1.9} />
             Refresh
           </button>
@@ -188,11 +228,15 @@ const BusinessResourcePage = ({
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {statRows.map((stat) => <Stat key={stat.label} {...stat} />)}
+        {statRows.map((stat) => (
+          <Stat key={stat.label} {...stat} />
+        ))}
       </section>
 
       {(message || error) && (
-        <p className={`rounded-lg border px-4 py-3 text-sm font-bold ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+        <p
+          className={`rounded-lg border px-4 py-3 text-sm font-bold ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}
+        >
           {error || message}
         </p>
       )}
@@ -201,7 +245,9 @@ const BusinessResourcePage = ({
         <div className="flex flex-col gap-3 border-b border-slate-300 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-950">{title} Records</h2>
-            <p className="mt-1 text-xs font-medium text-slate-500">{filteredItems.length} visible records</p>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              {filteredItems.length} visible records
+            </p>
           </div>
           <input
             className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-72"
@@ -215,23 +261,36 @@ const BusinessResourcePage = ({
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 {columns.map((column) => (
-                  <th key={column.key} className={`${column.width || 'w-40'} border-b border-r border-slate-300 px-4 py-2 font-bold last:border-r-0`}>
+                  <th
+                    key={column.key}
+                    className={`${column.width || 'w-40'} border-b border-r border-slate-300 px-4 py-2 font-bold last:border-r-0`}
+                  >
                     {column.label}
                   </th>
                 ))}
-                <th className="w-20 border-b border-slate-300 px-4 py-2 text-right font-bold">Action</th>
+                <th className="w-20 border-b border-slate-300 px-4 py-2 text-right font-bold">
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.map((item) => (
                 <tr key={item._id} className="bg-white transition hover:bg-blue-50/40">
                   {columns.map((column) => (
-                    <td key={column.key} className="border-b border-r border-slate-200 px-4 py-3 last:border-r-0">
+                    <td
+                      key={column.key}
+                      className="border-b border-r border-slate-200 px-4 py-3 last:border-r-0"
+                    >
                       {column.render ? column.render(item) : String(item[column.key] ?? '-')}
                     </td>
                   ))}
                   <td className="border-b border-slate-200 px-4 py-3 text-right">
-                    <button type="button" title="Delete" onClick={() => handleDelete(item)} className={iconButtonClass}>
+                    <button
+                      type="button"
+                      title="Delete"
+                      onClick={() => handleDelete(item)}
+                      className={iconButtonClass}
+                    >
                       <Trash2 size={15} strokeWidth={1.9} />
                     </button>
                   </td>
@@ -239,14 +298,20 @@ const BusinessResourcePage = ({
               ))}
               {!isLoading && filteredItems.length === 0 && (
                 <tr>
-                  <td colSpan={columns.length + 1} className="px-4 py-16 text-center text-sm font-semibold text-slate-500">
+                  <td
+                    colSpan={columns.length + 1}
+                    className="px-4 py-16 text-center text-sm font-semibold text-slate-500"
+                  >
                     {emptyText}
                   </td>
                 </tr>
               )}
               {isLoading && (
                 <tr>
-                  <td colSpan={columns.length + 1} className="px-4 py-16 text-center text-sm font-semibold text-slate-500">
+                  <td
+                    colSpan={columns.length + 1}
+                    className="px-4 py-16 text-center text-sm font-semibold text-slate-500"
+                  >
                     Loading records...
                   </td>
                 </tr>
@@ -261,14 +326,27 @@ const BusinessResourcePage = ({
           <form onSubmit={handleSubmit} className="space-y-5 p-5">
             <div className="grid gap-4 sm:grid-cols-2">
               {fields.map((field) => (
-                <Field key={field.name} field={field} value={form[field.name]} onChange={updateField} />
+                <Field
+                  key={field.name}
+                  field={field}
+                  value={form[field.name]}
+                  onChange={updateField}
+                />
               ))}
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-              <button type="button" onClick={() => setIsFormOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsFormOpen(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+              >
                 Cancel
               </button>
-              <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:bg-slate-300">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:bg-slate-300"
+              >
                 {isSaving ? 'Saving...' : createLabel}
               </button>
             </div>

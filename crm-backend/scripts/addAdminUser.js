@@ -10,7 +10,9 @@ dotenv.config();
 
 const seedSuperAdmin = async () => {
   const mongoUri = process.env.MONGODB_URI;
-  const email = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const email = String(process.env.ADMIN_EMAIL || '')
+    .trim()
+    .toLowerCase();
   const password = String(process.env.ADMIN_PASSWORD || '');
   const name = String(process.env.ADMIN_NAME || 'Super Admin').trim();
 
@@ -20,18 +22,26 @@ const seedSuperAdmin = async () => {
 
   await mongoose.connect(mongoUri);
 
-  await Promise.all(DEFAULT_ROLES.map((role) => RolePermission.updateOne(
-    { roleKey: role.roleKey },
-    { $set: { ...role, systemRole: true } },
-    { upsert: true },
-  )));
+  await Promise.all(
+    DEFAULT_ROLES.map((role) =>
+      RolePermission.updateOne(
+        { roleKey: role.roleKey },
+        { $set: { ...role, systemRole: true } },
+        { upsert: true },
+      ),
+    ),
+  );
   await RolePermission.deleteOne({ roleKey: 'admin' });
 
-  await Promise.all(UNIVERSAL_COMMUNITIES.map((community) => Community.updateOne(
-    { key: community.key },
-    { $set: { ...community, active: true } },
-    { upsert: true },
-  )));
+  await Promise.all(
+    UNIVERSAL_COMMUNITIES.map((community) =>
+      Community.updateOne(
+        { key: community.key },
+        { $set: { ...community, active: true } },
+        { upsert: true },
+      ),
+    ),
+  );
 
   const passwordHash = await bcrypt.hash(password, 10);
   const existingUser = await User.findOne({ email });

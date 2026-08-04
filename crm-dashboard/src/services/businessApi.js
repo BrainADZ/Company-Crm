@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
+import { getValidToken } from '../utils/auth';
 
 export const getAdminHeaders = () => ({
-  Authorization: `Bearer ${localStorage.getItem('adminToken')}`,
+  Authorization: `Bearer ${getValidToken('admin') || getValidToken('employee') || ''}`,
 });
 
 export const getBusinessSummary = async () => {
@@ -48,9 +49,13 @@ export const getBusinessPermissions = async () => {
 };
 
 export const updateBusinessPermissions = async (roleKey, modules) => {
-  const response = await axios.put(`${API_BASE_URL}/api/business/permissions/${roleKey}`, { modules }, {
-    headers: getAdminHeaders(),
-  });
+  const response = await axios.put(
+    `${API_BASE_URL}/api/business/permissions/${roleKey}`,
+    { modules },
+    {
+      headers: getAdminHeaders(),
+    },
+  );
   return response.data;
 };
 
@@ -60,9 +65,13 @@ export const getWorkStructure = async (headers = getAdminHeaders()) => {
 };
 
 export const createWorkModule = async (name) => {
-  const response = await axios.post(`${API_BASE_URL}/api/business/work-structure/modules`, { name }, {
-    headers: getAdminHeaders(),
-  });
+  const response = await axios.post(
+    `${API_BASE_URL}/api/business/work-structure/modules`,
+    { name },
+    {
+      headers: getAdminHeaders(),
+    },
+  );
   return response.data;
 };
 
@@ -74,9 +83,13 @@ export const createWorkTeam = async (payload) => {
 };
 
 export const createWorkDesignation = async (payload) => {
-  const response = await axios.post(`${API_BASE_URL}/api/business/work-structure/designations`, payload, {
-    headers: getAdminHeaders(),
-  });
+  const response = await axios.post(
+    `${API_BASE_URL}/api/business/work-structure/designations`,
+    payload,
+    {
+      headers: getAdminHeaders(),
+    },
+  );
   return response.data;
 };
 
@@ -95,8 +108,11 @@ export const deleteWorkTeam = async (id) => {
 };
 
 export const deleteWorkDesignation = async (id) => {
-  const response = await axios.delete(`${API_BASE_URL}/api/business/work-structure/designations/${id}`, {
-    headers: getAdminHeaders(),
-  });
+  const response = await axios.delete(
+    `${API_BASE_URL}/api/business/work-structure/designations/${id}`,
+    {
+      headers: getAdminHeaders(),
+    },
+  );
   return response.data;
 };

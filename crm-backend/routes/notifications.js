@@ -21,9 +21,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const recipientFilter = getRecipientFilter(req.user);
 
     const [notifications, unreadCount] = await Promise.all([
-      Notification.find(recipientFilter)
-        .sort({ createdAt: -1 })
-        .limit(limit),
+      Notification.find(recipientFilter).sort({ createdAt: -1 }).limit(limit),
       Notification.countDocuments({
         ...recipientFilter,
         isRead: false,
@@ -40,13 +38,16 @@ router.get('/', authMiddleware, async (req, res) => {
 router.patch('/read-all', authMiddleware, async (req, res) => {
   try {
     const recipientFilter = getRecipientFilter(req.user);
-    await Notification.updateMany({
-      ...recipientFilter,
-      isRead: false,
-    }, {
-      isRead: true,
-      readAt: new Date(),
-    });
+    await Notification.updateMany(
+      {
+        ...recipientFilter,
+        isRead: false,
+      },
+      {
+        isRead: true,
+        readAt: new Date(),
+      },
+    );
 
     return res.json({ message: 'Notifications marked as read' });
   } catch (error) {
@@ -57,15 +58,19 @@ router.patch('/read-all', authMiddleware, async (req, res) => {
 
 router.patch('/:id/read', authMiddleware, async (req, res) => {
   try {
-    const notification = await Notification.findOneAndUpdate({
-      _id: req.params.id,
-      ...getRecipientFilter(req.user),
-    }, {
-      isRead: true,
-      readAt: new Date(),
-    }, {
-      new: true,
-    });
+    const notification = await Notification.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        ...getRecipientFilter(req.user),
+      },
+      {
+        isRead: true,
+        readAt: new Date(),
+      },
+      {
+        new: true,
+      },
+    );
 
     if (!notification) {
       return res.status(404).json({ message: 'Notification not found' });

@@ -1,8 +1,11 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const ClientDataset = require('../models/ClientDataset');
 const User = require('../models/User');
+const BusinessUnit = require('../models/BusinessUnit');
+const UserAccessAssignment = require('../models/UserAccessAssignment');
 const authMiddleware = require('../middleware/authMiddleware');
 const { createNotification } = require('../utils/notifications');
 const { loadAuthorization } = require('../middleware/authorization');
@@ -11,6 +14,32 @@ const { getPermission } = require('../services/accessControlService');
 const router = express.Router();
 router.use(authMiddleware, loadAuthorization);
 const CLIENT_WORK_COLUMNS = ['Status', 'Remark', 'Employee'];
+const SALES_TABLE_FORMATS = {
+  marketing: [
+    'Sr. No.',
+    'Company Name',
+    'Client Name',
+    'City',
+    'Designation / Department',
+    'Mobile 1',
+    'Mobile 2',
+    'Email 1',
+    'Email 2',
+    'Website',
+  ],
+  live: [
+    'Date',
+    'MR Name',
+    'Full Name',
+    'Email',
+    'Phone Number',
+    'City',
+    'Targeted State',
+    'Your Requirement',
+    'Source',
+    'Product',
+  ],
+};
 const CLIENT_STATUS_OPTIONS = [
   'Pending',
   'Contacted',
@@ -41,17 +70,105 @@ const upload = multer({
   },
 });
 
-const requireAdmin = (req, res, next) => {
-  const action = req.method === 'GET' ? 'view' : req.method === 'POST' ? 'create' : req.method === 'DELETE' ? 'delete' : (req.path.includes('assign') ? 'assign' : 'update');
-  if (!getPermission(req.effectivePermissions, 'leads', action)) return res.status(403).json({ message: `Access denied: leads.${action} required` });
+const requireAdmin = async (req, res, next) => {
+  const action = req.path.includes('/upload')
+    ? 'import'
+    : req.method === 'GET'
+      ? 'view'
+      : req.method === 'POST'
+        ? 'create'
+        : req.method === 'DELETE'
+          ? 'delete'
+          : req.path.includes('assign')
+            ? 'assign'
+            : 'update';
+  const permission = getPermission(req.effectivePermissions, 'leads', action);
+  if (!permission)
+    return res
+      .status(403)
+      .json({ message: `Access denied: Sales Data ${action} permission is required` });
+  req.datasetPermission = permission;
+  if (req.user.roleKey !== 'super_admin') {
+    const now = new Date();
+    const assignments = await UserAccessAssignment.find({
+      userId: req.user.id,
+      status: 'active',
+      startDate: { $lte: now },
+      $or: [{ endDate: null }, { endDate: { $gte: now } }],
+    })
+      .populate('roleId', 'permissions')
+      .lean();
+    const businessUnitIds = [
+      ...new Set(
+        assignments
+          .filter((assignment) =>
+            assignment.roleId?.permissions?.some(
+              (item) => item.resource === 'leads' && item.actions?.includes(action),
+            ),
+          )
+          .flatMap((assignment) => (assignment.businessUnitIds || []).map(String)),
+      ),
+    ];
+    if (businessUnitIds.length) {
+      const units = await BusinessUnit.find({ _id: { $in: businessUnitIds }, status: 'active' })
+        .select('legacyCommunityKey')
+        .lean();
+      req.datasetCommunityKeys = units.map((unit) => unit.legacyCommunityKey).filter(Boolean);
+    }
+  }
   return next();
 };
 
+const isAssignedScope = (scope) => ['assigned', 'ASSIGNED', 'self', 'OWN'].includes(scope);
+
 const communityFilter = (req) => ({
-  communityKey: { $in: req.selectedCommunity ? [req.selectedCommunity] : (req.user.roleKey === 'super_admin' ? ['live', 'marketing', 'exhibition'] : req.user.communities) },
+  communityKey: {
+    $in: req.selectedCommunity
+      ? [req.selectedCommunity]
+      : req.user.roleKey === 'super_admin'
+        ? ['live', 'marketing', 'exhibition']
+        : req.datasetCommunityKeys || req.user.communities,
+  },
 });
 
-const requestedCommunity = (req) => String(req.body.communityKey || req.selectedCommunity || '').trim().toLowerCase();
+const requestedCommunity = (req) =>
+  String(req.body.communityKey || req.selectedCommunity || '')
+    .trim()
+    .toLowerCase();
+
+const resolveRequestedBusinessUnit = async (req) => {
+  const businessUnitId = normalizeCell(req.body.businessUnitId);
+  const communityKey = requestedCommunity(req);
+  if (businessUnitId && !mongoose.isValidObjectId(businessUnitId)) return null;
+  const query = businessUnitId ? { _id: businessUnitId } : { legacyCommunityKey: communityKey };
+  const businessUnit = await BusinessUnit.findOne({ ...query, status: 'active' });
+  if (!businessUnit) return null;
+  if (
+    req.datasetCommunityKeys &&
+    !req.datasetCommunityKeys.includes(businessUnit.legacyCommunityKey)
+  )
+    return false;
+  if (
+    req.user.roleKey !== 'super_admin' &&
+    !(req.user.communities || []).includes(businessUnit.legacyCommunityKey)
+  )
+    return false;
+  return businessUnit;
+};
+
+const employeeHasBusinessUnit = async (employee, businessUnit) => {
+  if (!businessUnit) return false;
+  const assignment = await UserAccessAssignment.exists({
+    userId: employee._id,
+    businessUnitIds: businessUnit._id,
+    status: 'active',
+    startDate: { $lte: new Date() },
+    $or: [{ endDate: null }, { endDate: { $gte: new Date() } }],
+  });
+  return (
+    Boolean(assignment) || (employee.communities || []).includes(businessUnit.legacyCommunityKey)
+  );
+};
 
 const normalizeCell = (cell) => {
   if (cell === null || cell === undefined) return '';
@@ -60,41 +177,68 @@ const normalizeCell = (cell) => {
 };
 
 const normalizeColumnName = (column) => normalizeCell(column).toLowerCase();
+const normalizeHeaderKey = (column) => normalizeColumnName(column).replace(/[^a-z0-9]/g, '');
 
 const addWorkColumnsAfterWebsite = (columns, rows) => {
-  const normalizedColumns = columns.map((column, index) => normalizeCell(column) || `Column ${index + 1}`);
-  const existingColumnNames = new Set(normalizedColumns.map(normalizeColumnName));
-  const columnsToAdd = CLIENT_WORK_COLUMNS.filter((column) => !existingColumnNames.has(column.toLowerCase()));
-
-  const normalizedRows = rows.map((row) => normalizedColumns.map((column, index) => normalizeCell(row[index])));
-
-  if (columnsToAdd.length === 0) {
-    return { columns: normalizedColumns, rows: normalizedRows };
-  }
-
-  const websiteIndex = normalizedColumns.findIndex((column) => normalizeColumnName(column) === 'website');
-  const insertIndex = websiteIndex === -1 ? normalizedColumns.length : websiteIndex + 1;
-  const finalColumns = [
-    ...normalizedColumns.slice(0, insertIndex),
-    ...columnsToAdd,
-    ...normalizedColumns.slice(insertIndex),
-  ];
-  const finalRows = normalizedRows.map((row) => [
-    ...row.slice(0, insertIndex),
-    ...columnsToAdd.map(() => ''),
-    ...row.slice(insertIndex),
-  ]);
-
-  return { columns: finalColumns, rows: finalRows };
+  const normalizedColumns = columns.map(
+    (column, index) => normalizeCell(column) || `Column ${index + 1}`,
+  );
+  const workIndexes = new Map(
+    CLIENT_WORK_COLUMNS.map((column) => [
+      column,
+      normalizedColumns.findIndex((item) => normalizeColumnName(item) === column.toLowerCase()),
+    ]),
+  );
+  const dataIndexes = normalizedColumns
+    .map((_, index) => index)
+    .filter(
+      (index) =>
+        !CLIENT_WORK_COLUMNS.some(
+          (column) => normalizeColumnName(normalizedColumns[index]) === column.toLowerCase(),
+        ),
+    );
+  return {
+    columns: [...dataIndexes.map((index) => normalizedColumns[index]), ...CLIENT_WORK_COLUMNS],
+    rows: rows.map((row) => [
+      ...dataIndexes.map((index) => normalizeCell(row[index])),
+      ...CLIENT_WORK_COLUMNS.map((column) =>
+        workIndexes.get(column) === -1 ? '' : normalizeCell(row[workIndexes.get(column)]),
+      ),
+    ]),
+  };
 };
 
-const getColumnIndex = (columns, columnName) => (
-  columns.findIndex((column) => normalizeColumnName(column) === columnName.toLowerCase())
-);
+const applyBusinessUnitTableFormat = (communityKey, columns, rows) => {
+  const template = SALES_TABLE_FORMATS[communityKey];
+  if (!template) return { ...addWorkColumnsAfterWebsite(columns, rows), format: 'exhibition' };
+  const sourceIndex = new Map(columns.map((column, index) => [normalizeHeaderKey(column), index]));
+  const missing = template.filter(
+    (column) =>
+      normalizeHeaderKey(column) !== 'srno' && !sourceIndex.has(normalizeHeaderKey(column)),
+  );
+  if (missing.length)
+    return {
+      error: `${communityKey === 'marketing' ? 'Marketing' : 'Live'} sheet is missing columns: ${missing.join(', ')}`,
+    };
+  const formattedRows = rows.map((row, rowIndex) =>
+    template.map((column) => {
+      const index = sourceIndex.get(normalizeHeaderKey(column));
+      return index === undefined && normalizeHeaderKey(column) === 'srno'
+        ? String(rowIndex + 1)
+        : normalizeCell(row[index]);
+    }),
+  );
+  return { ...addWorkColumnsAfterWebsite(template, formattedRows), format: communityKey };
+};
+
+const getColumnIndex = (columns, columnName) =>
+  columns.findIndex((column) => normalizeColumnName(column) === columnName.toLowerCase());
 
 const getCellValue = (columns, row, columnNames) => {
   const normalizedNames = columnNames.map((columnName) => columnName.toLowerCase());
-  const index = columns.findIndex((column) => normalizedNames.includes(normalizeColumnName(column)));
+  const index = columns.findIndex((column) =>
+    normalizedNames.includes(normalizeColumnName(column)),
+  );
 
   return index === -1 ? '' : normalizeCell(row[index]);
 };
@@ -103,27 +247,34 @@ const getDatasetSalesSummary = (dataset) => {
   const normalizedData = addWorkColumnsAfterWebsite(dataset.columns || [], dataset.rows || []);
   const statusIndex = getColumnIndex(normalizedData.columns, 'Status');
   const employeeIndex = getColumnIndex(normalizedData.columns, 'Employee');
-  const statusCounts = CLIENT_STATUS_OPTIONS.reduce((counts, status) => ({
-    ...counts,
-    [status]: 0,
-  }), {});
+  const statusCounts = CLIENT_STATUS_OPTIONS.reduce(
+    (counts, status) => ({
+      ...counts,
+      [status]: 0,
+    }),
+    {},
+  );
 
   normalizedData.rows.forEach((row) => {
     const status = statusIndex === -1 ? '' : normalizeCell(row[statusIndex]);
     if (statusCounts[status] !== undefined) statusCounts[status] += 1;
   });
 
-  const assignedRows = normalizedData.rows.filter((row, rowIndex) => (
-    normalizeAssignments(dataset.rowAssignments || []).some((assignment) => Number(assignment.rowIndex) === rowIndex)
-    || (employeeIndex !== -1 && normalizeCell(row[employeeIndex]))
-  )).length;
+  const assignedRows = normalizedData.rows.filter(
+    (row, rowIndex) =>
+      normalizeAssignments(dataset.rowAssignments || []).some(
+        (assignment) => Number(assignment.rowIndex) === rowIndex,
+      ) ||
+      (employeeIndex !== -1 && normalizeCell(row[employeeIndex])),
+  ).length;
   const totalRows = normalizedData.rows.length;
   const convertedRows = statusCounts.Converted || 0;
   const interestedRows = statusCounts.Interested || 0;
   const followUpRows = statusCounts['Follow Up'] || 0;
   const contactedRows = statusCounts.Contacted || 0;
   const lostRows = (statusCounts['Not Interested'] || 0) + (statusCounts['Not Reachable'] || 0);
-  const untouchedRows = totalRows - Object.values(statusCounts).reduce((sum, count) => sum + count, 0);
+  const untouchedRows =
+    totalRows - Object.values(statusCounts).reduce((sum, count) => sum + count, 0);
 
   return {
     totalRows,
@@ -146,16 +297,28 @@ const getDatasetPreview = (dataset) => {
   const firstRow = normalizedData.rows[0] || [];
 
   return {
-    accountName: getCellValue(normalizedData.columns, firstRow, ['Account Name', 'Client Name', 'Company Name']),
+    accountName: getCellValue(normalizedData.columns, firstRow, [
+      'Account Name',
+      'Client Name',
+      'Company Name',
+    ]),
     phone: getCellValue(normalizedData.columns, firstRow, ['Phone', 'Mobile', 'Contact Number']),
     website: getCellValue(normalizedData.columns, firstRow, ['Website', 'URL']),
     billingCity: getCellValue(normalizedData.columns, firstRow, ['Billing City', 'City']),
-    billingState: getCellValue(normalizedData.columns, firstRow, ['Billing State/Province', 'State', 'State/Province']),
+    billingState: getCellValue(normalizedData.columns, firstRow, [
+      'Billing State/Province',
+      'State',
+      'State/Province',
+    ]),
   };
 };
 
 const getDatasetListItem = (dataset) => ({
   _id: dataset._id,
+  businessUnitId: dataset.businessUnitId?._id || dataset.businessUnitId || null,
+  businessUnitName: dataset.businessUnitId?.name || '',
+  communityKey: dataset.communityKey,
+  tableFormat: dataset.tableFormat || dataset.communityKey,
   name: dataset.name,
   year: dataset.year,
   label: dataset.label || 'Prospect List',
@@ -172,10 +335,8 @@ const getDatasetListItem = (dataset) => ({
   preview: getDatasetPreview(dataset),
 });
 
-const getRowClientLabel = (columns, row, rowIndex) => (
-  getCellValue(columns, row, ['Client Name', 'Company Name', 'Website'])
-  || `Row ${rowIndex + 1}`
-);
+const getRowClientLabel = (columns, row, rowIndex) =>
+  getCellValue(columns, row, ['Client Name', 'Company Name', 'Website']) || `Row ${rowIndex + 1}`;
 
 const getUserLabel = async (userId) => {
   const user = await User.findById(userId).select('name email');
@@ -184,12 +345,18 @@ const getUserLabel = async (userId) => {
 
 const prepareDatasetResponse = (dataset, includeLogs = false) => {
   const datasetObject = dataset.toObject();
-  const normalizedData = addWorkColumnsAfterWebsite(datasetObject.columns || [], datasetObject.rows || []);
+  const normalizedData = addWorkColumnsAfterWebsite(
+    datasetObject.columns || [],
+    datasetObject.rows || [],
+  );
   const rowLogs = includeLogs ? datasetObject.rowLogs || [] : undefined;
   const rowAssignments = includeLogs ? datasetObject.rowAssignments || [] : undefined;
 
   return {
     ...datasetObject,
+    businessUnitId: datasetObject.businessUnitId?._id || datasetObject.businessUnitId || null,
+    businessUnitName: datasetObject.businessUnitId?.name || '',
+    tableFormat: datasetObject.tableFormat || datasetObject.communityKey,
     columns: normalizedData.columns,
     rows: normalizedData.rows,
     rowLogs,
@@ -197,14 +364,14 @@ const prepareDatasetResponse = (dataset, includeLogs = false) => {
   };
 };
 
-const normalizeRowLogs = (rowLogs = []) => rowLogs.map((rowLog) => ({
-  rowIndex: Number(rowLog.rowIndex),
-  entries: [...(rowLog.entries || [])],
-}));
+const normalizeRowLogs = (rowLogs = []) =>
+  rowLogs.map((rowLog) => ({
+    rowIndex: Number(rowLog.rowIndex),
+    entries: [...(rowLog.entries || [])],
+  }));
 
-const findRowLog = (rowLogs, rowIndex) => (
-  rowLogs.find((rowLog) => Number(rowLog.rowIndex) === Number(rowIndex))
-);
+const findRowLog = (rowLogs, rowIndex) =>
+  rowLogs.find((rowLog) => Number(rowLog.rowIndex) === Number(rowIndex));
 
 const upsertRowLogEntry = (rowLogs = [], rowIndex, entry) => {
   const normalizedRowLogs = normalizeRowLogs(rowLogs);
@@ -232,37 +399,52 @@ const upsertRowLogEntry = (rowLogs = [], rowIndex, entry) => {
 const normalizeRowIndexes = (rowIndexes) => {
   if (!Array.isArray(rowIndexes)) return [];
 
-  return [...new Set(rowIndexes
-    .map((rowIndex) => Number(rowIndex))
-    .filter((rowIndex) => Number.isInteger(rowIndex) && rowIndex >= 0))];
+  return [
+    ...new Set(
+      rowIndexes
+        .map((rowIndex) => Number(rowIndex))
+        .filter((rowIndex) => Number.isInteger(rowIndex) && rowIndex >= 0),
+    ),
+  ];
 };
 
-const normalizeAssignments = (rowAssignments = []) => rowAssignments.map((assignment) => ({
-  rowIndex: Number(assignment.rowIndex),
-  employee: assignment.employee,
-  employeeName: assignment.employeeName || '',
-  assignedBy: assignment.assignedBy,
-  assignedAt: assignment.assignedAt || new Date(),
-}));
+const normalizeAssignments = (rowAssignments = []) =>
+  rowAssignments.map((assignment) => ({
+    rowIndex: Number(assignment.rowIndex),
+    employee: assignment.employee,
+    employeeName: assignment.employeeName || '',
+    assignedBy: assignment.assignedBy,
+    assignedAt: assignment.assignedAt || new Date(),
+  }));
 
-const getAssignmentByRow = (rowAssignments = []) => {
+const getAssignmentsByRow = (rowAssignments = []) => {
   const assignmentMap = new Map();
   normalizeAssignments(rowAssignments).forEach((assignment) => {
-    assignmentMap.set(Number(assignment.rowIndex), assignment);
+    const rowIndex = Number(assignment.rowIndex);
+    assignmentMap.set(rowIndex, [...(assignmentMap.get(rowIndex) || []), assignment]);
   });
   return assignmentMap;
 };
 
 const getEmployeeDatasetResponse = (dataset, employeeId) => {
   const datasetObject = dataset.toObject();
-  const normalizedData = addWorkColumnsAfterWebsite(datasetObject.columns || [], datasetObject.rows || []);
-  const employeeAssignments = normalizeAssignments(datasetObject.rowAssignments || [])
-    .filter((assignment) => String(assignment.employee) === String(employeeId));
+  const normalizedData = addWorkColumnsAfterWebsite(
+    datasetObject.columns || [],
+    datasetObject.rows || [],
+  );
+  const employeeAssignments = normalizeAssignments(datasetObject.rowAssignments || []).filter(
+    (assignment) => String(assignment.employee) === String(employeeId),
+  );
   const assignedRowIndexes = employeeAssignments.map((assignment) => Number(assignment.rowIndex));
-  const assignedRows = assignedRowIndexes.map((rowIndex) => normalizedData.rows[rowIndex]).filter(Boolean);
+  const assignedRows = assignedRowIndexes
+    .map((rowIndex) => normalizedData.rows[rowIndex])
+    .filter(Boolean);
 
   return {
     _id: datasetObject._id,
+    businessUnitId: datasetObject.businessUnitId?._id || datasetObject.businessUnitId || null,
+    businessUnitName: datasetObject.businessUnitId?.name || '',
+    tableFormat: datasetObject.tableFormat || datasetObject.communityKey,
     name: datasetObject.name,
     year: datasetObject.year,
     originalFileName: datasetObject.originalFileName,
@@ -275,12 +457,99 @@ const getEmployeeDatasetResponse = (dataset, employeeId) => {
   };
 };
 
+router.get('/options', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const businessUnitQuery =
+      req.user.roleKey === 'super_admin'
+        ? { status: 'active' }
+        : {
+            status: 'active',
+            legacyCommunityKey: { $in: req.datasetCommunityKeys || req.user.communities || [] },
+          };
+    const businessUnits = await BusinessUnit.find(businessUnitQuery)
+      .select('name slug legacyCommunityKey')
+      .sort({ name: 1 })
+      .lean();
+    const employees = await User.find({
+      $or: [{ userType: 'employee' }, { role: 'employee' }],
+      isDeleted: { $ne: true },
+      accountStatus: 'active',
+    })
+      .select('name email employeeId communities')
+      .sort({ name: 1 })
+      .lean();
+    const assignments = await UserAccessAssignment.find({
+      userId: { $in: employees.map((employee) => employee._id) },
+      status: 'active',
+      startDate: { $lte: new Date() },
+      $or: [{ endDate: null }, { endDate: { $gte: new Date() } }],
+    })
+      .select('userId businessUnitIds')
+      .lean();
+    const unitMap = new Map();
+    assignments.forEach((assignment) => {
+      const userId = String(assignment.userId);
+      unitMap.set(userId, [
+        ...new Set([...(unitMap.get(userId) || []), ...assignment.businessUnitIds.map(String)]),
+      ]);
+    });
+    const canAssign = Boolean(getPermission(req.effectivePermissions, 'leads', 'assign'));
+    return res.json({
+      businessUnits,
+      employees: canAssign
+        ? employees.map((employee) => ({
+            _id: employee._id,
+            name: employee.name,
+            email: employee.email,
+            employeeId: employee.employeeId || '',
+            businessUnitIds:
+              unitMap.get(String(employee._id)) ||
+              businessUnits
+                .filter((unit) => (employee.communities || []).includes(unit.legacyCommunityKey))
+                .map((unit) => String(unit._id)),
+          }))
+        : [],
+      actions:
+        req.effectivePermissions.find((permission) => permission.resource === 'leads')?.actions ||
+        [],
+    });
+  } catch (error) {
+    console.error('Error fetching client dataset options:', error);
+    return res.status(500).json({ message: error.message || 'Server error' });
+  }
+});
+
 router.get('/', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const datasets = await ClientDataset.find(communityFilter(req))
+    const query = {
+      ...communityFilter(req),
+      ...(isAssignedScope(req.datasetPermission.scope)
+        ? { 'rowAssignments.employee': req.user.id }
+        : {}),
+    };
+    const datasets = await ClientDataset.find(query)
+      .populate('businessUnitId', 'name slug legacyCommunityKey')
       .sort({ createdAt: -1 });
-
-    res.json(datasets.map(getDatasetListItem));
+    if (isAssignedScope(req.datasetPermission.scope)) {
+      return res.json(
+        datasets.map((dataset) => {
+          const assigned = getEmployeeDatasetResponse(dataset, req.user.id);
+          return {
+            _id: assigned._id,
+            businessUnitId: assigned.businessUnitId,
+            businessUnitName: assigned.businessUnitName,
+            communityKey: dataset.communityKey,
+            name: assigned.name,
+            year: assigned.year,
+            originalFileName: assigned.originalFileName,
+            rowCount: assigned.rowCount,
+            createdAt: assigned.createdAt,
+            updatedAt: assigned.updatedAt,
+          };
+        }),
+      );
+    }
+    return res.json(datasets.map(getDatasetListItem));
   } catch (error) {
     console.error('Error fetching client datasets:', error);
     res.status(500).json({ message: 'Server error' });
@@ -296,13 +565,18 @@ router.get('/assigned/me', authMiddleware, async (req, res) => {
     const datasets = await ClientDataset.find({
       'rowAssignments.employee': req.user.id,
       ...communityFilter(req),
-    }).select('-rowLogs').sort({ updatedAt: -1 });
+    })
+      .select('-rowLogs')
+      .populate('businessUnitId', 'name slug legacyCommunityKey')
+      .sort({ updatedAt: -1 });
 
     const assignedDatasets = datasets.map((dataset) => {
       const response = getEmployeeDatasetResponse(dataset, req.user.id);
 
       return {
         _id: response._id,
+        businessUnitId: response.businessUnitId,
+        businessUnitName: response.businessUnitName,
         name: response.name,
         year: response.year,
         originalFileName: response.originalFileName,
@@ -321,13 +595,44 @@ router.get('/assigned/me', authMiddleware, async (req, res) => {
 
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const dataset = await ClientDataset.findOne({ _id: req.params.id, ...communityFilter(req) });
+    const viewPermission = getPermission(req.effectivePermissions, 'leads', 'view');
+    if (viewPermission && req.user.roleKey !== 'super_admin') {
+      const now = new Date();
+      const assignments = await UserAccessAssignment.find({
+        userId: req.user.id,
+        status: 'active',
+        startDate: { $lte: now },
+        $or: [{ endDate: null }, { endDate: { $gte: now } }],
+      })
+        .populate('roleId', 'permissions')
+        .lean();
+      const businessUnitIds = [
+        ...new Set(
+          assignments
+            .filter((assignment) =>
+              assignment.roleId?.permissions?.some(
+                (item) => item.resource === 'leads' && item.actions?.includes('view'),
+              ),
+            )
+            .flatMap((assignment) => (assignment.businessUnitIds || []).map(String)),
+        ),
+      ];
+      if (businessUnitIds.length) {
+        const units = await BusinessUnit.find({ _id: { $in: businessUnitIds }, status: 'active' })
+          .select('legacyCommunityKey')
+          .lean();
+        req.datasetCommunityKeys = units.map((unit) => unit.legacyCommunityKey).filter(Boolean);
+      }
+    }
+    const dataset = await ClientDataset.findOne({ _id: req.params.id, ...communityFilter(req) })
+      .populate('businessUnitId', 'name slug legacyCommunityKey')
+      .populate('rowLogs.entries.changedBy', 'name email employeeId');
 
     if (!dataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
     }
 
-    if (req.user.role === 'employee') {
+    if (!viewPermission || isAssignedScope(viewPermission.scope)) {
       const assignedDataset = getEmployeeDatasetResponse(dataset, req.user.id);
 
       if (assignedDataset.rows.length === 0) {
@@ -337,14 +642,18 @@ router.get('/:id', authMiddleware, async (req, res) => {
       return res.json(assignedDataset);
     }
 
-    return res.json(prepareDatasetResponse(dataset, req.user.role === 'admin'));
+    const includeLogs = Boolean(
+      getPermission(req.effectivePermissions, 'leads', 'update') ||
+      getPermission(req.effectivePermissions, 'leads', 'assign'),
+    );
+    return res.json(prepareDatasetResponse(dataset, includeLogs));
   } catch (error) {
     console.error('Error fetching client dataset:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 });
 
-router.patch('/:id/rows/:rowIndex/status', authMiddleware, async (req, res) => {
+router.patch('/:id/rows/:rowIndex/status', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const rowIndex = Number(req.params.rowIndex);
     const { status = '', remark = '' } = req.body;
@@ -369,11 +678,13 @@ router.patch('/:id/rows/:rowIndex/status', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Client row not found' });
     }
 
-    if (req.user.role === 'employee') {
-      const assignmentMap = getAssignmentByRow(dataset.rowAssignments || []);
-      const rowAssignment = assignmentMap.get(rowIndex);
+    if (isAssignedScope(req.datasetPermission.scope)) {
+      const assignmentMap = getAssignmentsByRow(dataset.rowAssignments || []);
+      const rowAssignments = assignmentMap.get(rowIndex) || [];
 
-      if (!rowAssignment || String(rowAssignment.employee) !== String(req.user.id)) {
+      if (
+        !rowAssignments.some((assignment) => String(assignment.employee) === String(req.user.id))
+      ) {
         return res.status(403).json({ message: 'You can update only your assigned data' });
       }
     }
@@ -396,9 +707,12 @@ router.patch('/:id/rows/:rowIndex/status', authMiddleware, async (req, res) => {
     dataset.rows = rows;
 
     let updatedRowLog;
+    let actorName = '';
     if (statusChanged || remarkChanged) {
+      actorName = await getUserLabel(req.user.id);
       const nextLogEntry = {
         changedBy: req.user.id,
+        changedByName: actorName,
         changedByRole: req.user.role,
         statusChanged,
         remarkChanged,
@@ -421,13 +735,15 @@ router.patch('/:id/rows/:rowIndex/status', authMiddleware, async (req, res) => {
     dataset.markModified('rows');
     await dataset.save();
 
-    if ((statusChanged || remarkChanged) && req.user.role === 'employee') {
-      const actorName = await getUserLabel(req.user.id);
+    if ((statusChanged || remarkChanged) && isAssignedScope(req.datasetPermission.scope)) {
+      actorName = actorName || (await getUserLabel(req.user.id));
       const clientLabel = getRowClientLabel(columns, updatedRow, rowIndex);
       const changes = [
         statusChanged ? `status: ${previousStatus || 'Empty'} to ${currentStatus || 'Empty'}` : '',
         remarkChanged ? 'remark updated' : '',
-      ].filter(Boolean).join(', ');
+      ]
+        .filter(Boolean)
+        .join(', ');
 
       await createNotification({
         recipientRole: 'admin',
@@ -458,7 +774,7 @@ router.patch('/:id/rows/:rowIndex/status', authMiddleware, async (req, res) => {
       row: updatedRow,
     };
 
-    if (req.user.role === 'admin') {
+    if (!isAssignedScope(req.datasetPermission.scope)) {
       responsePayload.rowLog = updatedRowLog || { rowIndex, entries: [] };
     }
 
@@ -471,59 +787,135 @@ router.patch('/:id/rows/:rowIndex/status', authMiddleware, async (req, res) => {
 
 router.patch('/:id/assign', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const rowIndexes = normalizeRowIndexes(req.body.rowIndexes);
-    const employeeId = normalizeCell(req.body.employeeId);
-
-    if (rowIndexes.length === 0) {
-      return res.status(400).json({ message: 'Select at least one row to assign' });
+    let rowIndexes = normalizeRowIndexes(req.body.rowIndexes);
+    const employeeIds = [
+      ...new Set(
+        [...(Array.isArray(req.body.employeeIds) ? req.body.employeeIds : []), req.body.employeeId]
+          .map(normalizeCell)
+          .filter(Boolean),
+      ),
+    ];
+    const assignmentMode = normalizeCell(req.body.assignmentMode).toLowerCase() || 'selected';
+    const allowedModes = ['selected', 'full', 'half', 'limited'];
+    if (!allowedModes.includes(assignmentMode))
+      return res.status(400).json({ message: 'Select a valid assignment mode' });
+    if (
+      !employeeIds.length ||
+      employeeIds.some((employeeId) => !mongoose.isValidObjectId(employeeId))
+    ) {
+      return res.status(400).json({ message: 'Select at least one valid employee' });
     }
 
-    const employee = await User.findOne({ _id: employeeId, role: 'employee', isDeleted: { $ne: true }, accountStatus: 'active' }).select('name email communities');
-    if (!employee) {
-      return res.status(404).json({ message: 'Employee not found' });
+    const employees = await User.find({
+      _id: { $in: employeeIds },
+      $or: [{ userType: 'employee' }, { role: 'employee' }],
+      isDeleted: { $ne: true },
+      accountStatus: 'active',
+    }).select('name email communities');
+    if (employees.length !== employeeIds.length) {
+      return res.status(404).json({ message: 'One or more selected employees were not found' });
     }
 
     const dataset = await ClientDataset.findOne({ _id: req.params.id, ...communityFilter(req) });
     if (!dataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
     }
-    if (!employee.communities.includes(dataset.communityKey)) return res.status(403).json({ message: 'Cannot assign data outside employee communities' });
+    const businessUnit = dataset.businessUnitId
+      ? await BusinessUnit.findById(dataset.businessUnitId)
+      : await BusinessUnit.findOne({ legacyCommunityKey: dataset.communityKey, status: 'active' });
+    const unitAccess = await Promise.all(
+      employees.map((employee) => employeeHasBusinessUnit(employee, businessUnit)),
+    );
+    const unauthorizedEmployees = employees.filter((_, index) => !unitAccess[index]);
+    if (unauthorizedEmployees.length) {
+      return res.status(403).json({
+        message: `${unauthorizedEmployees.map((employee) => employee.name || employee.email).join(', ')} cannot access this dataset Business Unit`,
+      });
+    }
 
     const { columns, rows } = addWorkColumnsAfterWebsite(dataset.columns || [], dataset.rows || []);
     const employeeIndex = getColumnIndex(columns, 'Employee');
+    const currentAssignments = normalizeAssignments(dataset.rowAssignments || []);
+    const availableRows = rows
+      .map((_, rowIndex) => rowIndex)
+      .filter((rowIndex) =>
+        employees.some(
+          (employee) =>
+            !currentAssignments.some(
+              (assignment) =>
+                Number(assignment.rowIndex) === rowIndex &&
+                String(assignment.employee) === String(employee._id),
+            ),
+        ),
+      );
+
+    if (assignmentMode === 'full') rowIndexes = availableRows;
+    if (assignmentMode === 'half')
+      rowIndexes = availableRows.slice(0, Math.ceil(availableRows.length / 2));
+    if (assignmentMode === 'limited') {
+      const limit = Number(req.body.limit);
+      if (!Number.isInteger(limit) || limit < 1)
+        return res.status(400).json({ message: 'Enter a valid record limit' });
+      if (limit > availableRows.length)
+        return res
+          .status(400)
+          .json({ message: `Only ${availableRows.length} unassigned records are available` });
+      rowIndexes = availableRows.slice(0, limit);
+    }
+    if (rowIndexes.length === 0) {
+      return res.status(400).json({
+        message:
+          assignmentMode === 'selected'
+            ? 'Select at least one row to assign'
+            : 'No unassigned records are available',
+      });
+    }
     const invalidRows = rowIndexes.filter((rowIndex) => rowIndex >= rows.length);
 
     if (invalidRows.length) {
-      return res.status(400).json({ message: `Invalid row numbers: ${invalidRows.map((rowIndex) => rowIndex + 1).join(', ')}` });
-    }
-
-    const assignmentMap = getAssignmentByRow(dataset.rowAssignments || []);
-    const lockedRows = rowIndexes.filter((rowIndex) => {
-      const assignment = assignmentMap.get(rowIndex);
-      return assignment && String(assignment.employee) !== String(employee._id);
-    });
-
-    if (lockedRows.length) {
-      return res.status(409).json({
-        message: `Rows already assigned: ${lockedRows.map((rowIndex) => rowIndex + 1).join(', ')}. Unassign first.`,
-        lockedRows,
+      return res.status(400).json({
+        message: `Invalid row numbers: ${invalidRows.map((rowIndex) => rowIndex + 1).join(', ')}`,
       });
     }
 
     const assignedAt = new Date();
-    const employeeLabel = employee.name || employee.email || 'Employee';
-    const nextAssignments = normalizeAssignments(dataset.rowAssignments || [])
-      .filter((assignment) => !rowIndexes.includes(Number(assignment.rowIndex)));
+    const nextAssignments = [...currentAssignments];
+    const assignmentsByEmployee = new Map(employees.map((employee) => [String(employee._id), []]));
 
     rowIndexes.forEach((rowIndex) => {
-      rows[rowIndex][employeeIndex] = employeeLabel;
-      nextAssignments.push({
-        rowIndex,
-        employee: employee._id,
-        employeeName: employeeLabel,
-        assignedBy: req.user.id,
-        assignedAt,
+      employees.forEach((employee) => {
+        const alreadyAssigned = nextAssignments.some(
+          (assignment) =>
+            Number(assignment.rowIndex) === rowIndex &&
+            String(assignment.employee) === String(employee._id),
+        );
+        if (alreadyAssigned) return;
+        const employeeLabel = employee.name || employee.email || 'Employee';
+        nextAssignments.push({
+          rowIndex,
+          employee: employee._id,
+          employeeName: employeeLabel,
+          assignedBy: req.user.id,
+          assignedAt,
+        });
+        assignmentsByEmployee.get(String(employee._id)).push(rowIndex);
       });
+    });
+
+    const assignedCount = Array.from(assignmentsByEmployee.values()).reduce(
+      (total, indexes) => total + indexes.length,
+      0,
+    );
+    if (!assignedCount)
+      return res
+        .status(409)
+        .json({ message: 'Selected data is already assigned to the selected employees' });
+    const nextAssignmentMap = getAssignmentsByRow(nextAssignments);
+    rowIndexes.forEach((rowIndex) => {
+      rows[rowIndex][employeeIndex] = (nextAssignmentMap.get(rowIndex) || [])
+        .map((assignment) => assignment.employeeName)
+        .filter(Boolean)
+        .join(', ');
     });
 
     dataset.columns = columns;
@@ -534,25 +926,31 @@ router.patch('/:id/assign', authMiddleware, requireAdmin, async (req, res) => {
     dataset.markModified('rowAssignments');
     await dataset.save();
 
-    await createNotification({
-      recipientRole: 'employee',
-      recipientUser: employee._id,
-      actorUser: req.user.id,
-      actorName: await getUserLabel(req.user.id),
-      actorRole: req.user.role,
-      type: 'client_assignment',
-      title: 'New client data assigned',
-      message: `${rowIndexes.length} row${rowIndexes.length > 1 ? 's' : ''} assigned to you in ${dataset.name}.`,
-      link: `/employee-dashboard/datasets/${dataset._id}`,
-      meta: {
-        datasetId: dataset._id,
-        rowIndexes,
-        employeeId: employee._id,
-      },
-    });
+    const actorName = await getUserLabel(req.user.id);
+    await Promise.all(
+      employees.map((employee) => {
+        const assignedRows = assignmentsByEmployee.get(String(employee._id));
+        if (!assignedRows.length) return null;
+        return createNotification({
+          recipientRole: 'employee',
+          recipientUser: employee._id,
+          actorUser: req.user.id,
+          actorName,
+          actorRole: req.user.role,
+          type: 'client_assignment',
+          title: 'New client data assigned',
+          message: `${assignedRows.length} row${assignedRows.length > 1 ? 's' : ''} assigned to you in ${dataset.name}.`,
+          link: `/employee-dashboard/datasets/${dataset._id}`,
+          meta: { datasetId: dataset._id, rowIndexes: assignedRows, employeeId: employee._id },
+        });
+      }),
+    );
 
     return res.json({
-      message: `${rowIndexes.length} rows assigned to ${employeeLabel}`,
+      message: `${assignedCount} assignment${assignedCount === 1 ? '' : 's'} added across ${rowIndexes.length} row${rowIndexes.length === 1 ? '' : 's'} for ${employees.length} employee${employees.length === 1 ? '' : 's'}`,
+      assignmentMode,
+      assignedCount,
+      employeeCount: employees.length,
       columns,
       rows,
       rowAssignments: nextAssignments,
@@ -581,18 +979,22 @@ router.patch('/:id/unassign', authMiddleware, requireAdmin, async (req, res) => 
     const invalidRows = rowIndexes.filter((rowIndex) => rowIndex >= rows.length);
 
     if (invalidRows.length) {
-      return res.status(400).json({ message: `Invalid row numbers: ${invalidRows.map((rowIndex) => rowIndex + 1).join(', ')}` });
+      return res.status(400).json({
+        message: `Invalid row numbers: ${invalidRows.map((rowIndex) => rowIndex + 1).join(', ')}`,
+      });
     }
 
-    const removedAssignments = normalizeAssignments(dataset.rowAssignments || [])
-      .filter((assignment) => rowIndexes.includes(Number(assignment.rowIndex)));
+    const removedAssignments = normalizeAssignments(dataset.rowAssignments || []).filter(
+      (assignment) => rowIndexes.includes(Number(assignment.rowIndex)),
+    );
 
     rowIndexes.forEach((rowIndex) => {
       rows[rowIndex][employeeIndex] = '';
     });
 
-    const nextAssignments = normalizeAssignments(dataset.rowAssignments || [])
-      .filter((assignment) => !rowIndexes.includes(Number(assignment.rowIndex)));
+    const nextAssignments = normalizeAssignments(dataset.rowAssignments || []).filter(
+      (assignment) => !rowIndexes.includes(Number(assignment.rowIndex)),
+    );
 
     dataset.columns = columns;
     dataset.rows = rows;
@@ -610,23 +1012,25 @@ router.patch('/:id/unassign', authMiddleware, requireAdmin, async (req, res) => 
     });
 
     const actorName = await getUserLabel(req.user.id);
-    await Promise.all(Array.from(removedByEmployee.entries()).map(([employeeId, removedRows]) => (
-      createNotification({
-        recipientRole: 'employee',
-        recipientUser: employeeId,
-        actorUser: req.user.id,
-        actorName,
-        actorRole: req.user.role,
-        type: 'client_unassignment',
-        title: 'Client data unassigned',
-        message: `${removedRows.length} row${removedRows.length > 1 ? 's were' : ' was'} unassigned from ${dataset.name}.`,
-        link: '/employee-dashboard/datasets',
-        meta: {
-          datasetId: dataset._id,
-          rowIndexes: removedRows,
-        },
-      })
-    )));
+    await Promise.all(
+      Array.from(removedByEmployee.entries()).map(([employeeId, removedRows]) =>
+        createNotification({
+          recipientRole: 'employee',
+          recipientUser: employeeId,
+          actorUser: req.user.id,
+          actorName,
+          actorRole: req.user.role,
+          type: 'client_unassignment',
+          title: 'Client data unassigned',
+          message: `${removedRows.length} row${removedRows.length > 1 ? 's were' : ' was'} unassigned from ${dataset.name}.`,
+          link: '/employee-dashboard/datasets',
+          meta: {
+            datasetId: dataset._id,
+            rowIndexes: removedRows,
+          },
+        }),
+      ),
+    );
 
     return res.json({
       message: `${rowIndexes.length} rows unassigned`,
@@ -699,8 +1103,14 @@ router.patch('/labels/bulk', authMiddleware, requireAdmin, async (req, res) => {
     if (['Low', 'Medium', 'High'].includes(priority)) update.priority = priority;
     if (salesStage) update.salesStage = salesStage;
 
-    await ClientDataset.updateMany({ _id: { $in: datasetIds }, ...communityFilter(req) }, { $set: update });
-    const datasets = await ClientDataset.find({ _id: { $in: datasetIds }, ...communityFilter(req) });
+    await ClientDataset.updateMany(
+      { _id: { $in: datasetIds }, ...communityFilter(req) },
+      { $set: update },
+    );
+    const datasets = await ClientDataset.find({
+      _id: { $in: datasetIds },
+      ...communityFilter(req),
+    });
 
     return res.json({
       message: `${datasets.length} account list${datasets.length === 1 ? '' : 's'} updated`,
@@ -726,14 +1136,15 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     const source = normalizeCell(req.body.source) || 'Manual';
     const ownerAlias = normalizeCell(req.body.ownerAlias) || 'Admin';
     const salesStage = normalizeCell(req.body.salesStage) || 'Prospecting';
-    const communityKey = requestedCommunity(req);
+    const businessUnit = await resolveRequestedBusinessUnit(req);
+    if (businessUnit === false)
+      return res.status(403).json({ message: 'Business Unit access denied' });
+    if (!businessUnit) return res.status(400).json({ message: 'Select a valid Business Unit' });
+    const communityKey = businessUnit.legacyCommunityKey;
 
     if (!name) {
       return res.status(400).json({ message: 'Account list name is required' });
     }
-    if (!communityKey) return res.status(400).json({ message: 'Community is required' });
-    if (req.user.roleKey !== 'super_admin' && !req.user.communities.includes(communityKey)) return res.status(403).json({ message: 'Community access denied' });
-
     if (!accountName) {
       return res.status(400).json({ message: 'Account name is required' });
     }
@@ -750,7 +1161,9 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     const normalizedAccountData = addWorkColumnsAfterWebsite(accountColumns, [accountRow]);
 
     const dataset = new ClientDataset({
+      businessUnitId: businessUnit._id,
       communityKey,
+      tableFormat: communityKey,
       name,
       year,
       label,
@@ -766,6 +1179,7 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     });
 
     await dataset.save();
+    await dataset.populate('businessUnitId', 'name slug legacyCommunityKey');
 
     return res.status(201).json({
       message: 'Account list created successfully',
@@ -779,7 +1193,10 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 
 router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const deletedDataset = await ClientDataset.findOneAndDelete({ _id: req.params.id, ...communityFilter(req) });
+    const deletedDataset = await ClientDataset.findOneAndDelete({
+      _id: req.params.id,
+      ...communityFilter(req),
+    });
 
     if (!deletedDataset) {
       return res.status(404).json({ message: 'Client dataset not found' });
@@ -798,14 +1215,15 @@ router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
 router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), async (req, res) => {
   try {
     const { name, year } = req.body;
-    const communityKey = requestedCommunity(req);
+    const businessUnit = await resolveRequestedBusinessUnit(req);
+    if (businessUnit === false)
+      return res.status(403).json({ message: 'Business Unit access denied' });
+    if (!businessUnit) return res.status(400).json({ message: 'Select a valid Business Unit' });
+    const communityKey = businessUnit.legacyCommunityKey;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: 'Dataset name is required' });
     }
-    if (!communityKey) return res.status(400).json({ message: 'Community is required' });
-    if (req.user.roleKey !== 'super_admin' && !req.user.communities.includes(communityKey)) return res.status(403).json({ message: 'Community access denied' });
-
     if (!req.file) {
       return res.status(400).json({ message: 'Excel file is required' });
     }
@@ -817,6 +1235,7 @@ router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), asyn
       header: 1,
       defval: '',
       blankrows: false,
+      raw: false,
     });
 
     const headerRow = rawRows.find((row) => row.some((cell) => normalizeCell(cell)));
@@ -825,17 +1244,27 @@ router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), asyn
     }
 
     const headerIndex = rawRows.indexOf(headerRow);
-    const parsedColumns = headerRow.map((cell, index) => normalizeCell(cell) || `Column ${index + 1}`);
-    const parsedRows = rawRows.slice(headerIndex + 1);
-    const { columns, rows } = addWorkColumnsAfterWebsite(parsedColumns, parsedRows);
+    const parsedColumns = headerRow.map(
+      (cell, index) => normalizeCell(cell) || `Column ${index + 1}`,
+    );
+    const parsedRows = rawRows
+      .slice(headerIndex + 1)
+      .filter((row) => row.some((cell) => normalizeCell(cell)));
+    const formattedData = applyBusinessUnitTableFormat(communityKey, parsedColumns, parsedRows);
+    if (formattedData.error) return res.status(400).json({ message: formattedData.error });
+    const { columns, rows } = formattedData;
     const filledRows = rows.filter((row) => row.some((cell) => cell));
 
     const dataset = new ClientDataset({
+      businessUnitId: businessUnit._id,
       communityKey,
+      tableFormat: formattedData.format,
       name: name.trim(),
       year: year?.trim() || '',
       label: normalizeCell(req.body.label) || 'Prospect List',
-      priority: ['Low', 'Medium', 'High'].includes(normalizeCell(req.body.priority)) ? normalizeCell(req.body.priority) : 'Medium',
+      priority: ['Low', 'Medium', 'High'].includes(normalizeCell(req.body.priority))
+        ? normalizeCell(req.body.priority)
+        : 'Medium',
       source: normalizeCell(req.body.source) || 'Excel Import',
       ownerAlias: normalizeCell(req.body.ownerAlias) || 'Admin',
       salesStage: normalizeCell(req.body.salesStage) || 'Prospecting',
@@ -847,6 +1276,7 @@ router.post('/upload', authMiddleware, requireAdmin, upload.single('file'), asyn
     });
 
     await dataset.save();
+    await dataset.populate('businessUnitId', 'name slug legacyCommunityKey');
 
     return res.status(201).json({
       message: 'Client data uploaded successfully',

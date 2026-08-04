@@ -6,7 +6,9 @@
     "start": "node index.js",
     "dev": "node index.js",
     "seed:admin": "node scripts/addAdminUser.js",
-    "migrate:rbac": "node scripts/migrateRbac.js"
+    "migrate:rbac": "node scripts/migrateRbac.js",
+    "migrate:organization-access": "node scripts/migrateOrganizationAccess.js",
+    "setup:quotations": "node scripts/ensureQuotationPermissions.js"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +27,8 @@
     "mongodb": "^6.11.0",
     "mongoose": "^8.19.2",
     "multer": "^2.0.2",
+    "nodemailer": "^9.0.3",
+    "pdfkit": "^0.19.1",
     "prop-types": "^15.8.1",
     "socket.io": "^4.7.5",
     "xlsx": "^0.18.5"

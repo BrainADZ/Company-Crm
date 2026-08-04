@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -6,9 +6,7 @@ import {
   UserRoundCog,
   ListTodo,
   Gauge,
-  MessageCircle,
   BarChart3,
-  BriefcaseBusiness,
   CalendarDays,
   ChevronDown,
   ChevronLeft,
@@ -19,8 +17,9 @@ import {
   FolderOpen,
   ReceiptText,
   ShieldCheck,
-  Network,
 } from 'lucide-react';
+import { getMyAccess } from '../services/accessApi';
+import { isSuperAdminSession } from '../utils/auth';
 
 const projectWorkItems = [
   {
@@ -46,78 +45,101 @@ const navItems = [
     label: 'Dashboard',
     exact: true,
     icon: LayoutDashboard,
-  },
-  {
-    to: '/dashboard/business',
-    label: 'Business OS',
-    icon: BriefcaseBusiness,
+    moduleKey: 'dashboard',
   },
   {
     to: '/dashboard/clients',
     label: 'Sales / Clients',
     icon: Users,
+    moduleKey: 'sales',
   },
   {
-    to: '/dashboard/communication',
-    label: 'Communication',
-    icon: MessageCircle,
+    to: '/dashboard/quotations',
+    label: 'Quotations',
+    icon: FileText,
+    moduleKey: 'quotations',
   },
   {
     to: '/dashboard/marketing',
     label: 'Marketing',
     icon: BarChart3,
+    moduleKey: 'marketing',
   },
   {
     to: '/dashboard/accounting',
     label: 'Accounting',
     icon: ReceiptText,
+    moduleKey: 'accounting',
   },
   {
     id: 'project-work',
     label: 'Project Work',
     icon: FolderKanban,
     children: projectWorkItems,
+    moduleKey: 'projects',
   },
   {
     to: '/dashboard/documents',
     label: 'Documents',
     icon: FolderOpen,
-  },
-  {
-    to: '/dashboard/departments',
-    label: 'Departments',
-    icon: Network,
+    moduleKey: 'documents',
   },
   {
     to: '/dashboard/employees',
     label: 'Employees',
     icon: UserRoundCog,
+    moduleKey: 'employees',
   },
   {
     to: '/dashboard/meetings',
     label: 'Meetings',
     icon: CalendarDays,
+    moduleKey: 'meetings',
   },
   {
     to: '/dashboard/permissions',
     label: 'Permissions',
     icon: ShieldCheck,
+    moduleKey: 'permissions',
   },
   {
     to: '/dashboard/whatsapp',
     label: 'WhatsApp',
     icon: FileText,
+    moduleKey: 'whatsapp',
   },
 ];
 
 const Sidebar = ({ collapsed, setCollapsed }) => {
   const location = useLocation();
   const [openGroups, setOpenGroups] = useState({});
+  const [visibleModules, setVisibleModules] = useState(null);
+
+  useEffect(() => {
+    if (isSuperAdminSession()) {
+      setVisibleModules(null);
+      return undefined;
+    }
+    let active = true;
+    getMyAccess()
+      .then((access) => {
+        if (active) setVisibleModules(access.bypass ? null : new Set(access.visibleModules || []));
+      })
+      .catch(() => {
+        if (active) setVisibleModules(new Set(['dashboard']));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => visibleModules === null || visibleModules.has(item.moduleKey)),
+    [visibleModules],
+  );
 
   const isActive = (item) =>
-    item.exact
-      ? location.pathname === item.to
-      : location.pathname.startsWith(item.to);
+    item.exact ? location.pathname === item.to : location.pathname.startsWith(item.to);
 
   const toggleGroup = (groupId) => {
     setOpenGroups((current) => ({
@@ -172,7 +194,7 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
         )}
 
         <div className="space-y-1.5">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const groupActive = item.children?.some((child) => isActive(child));
 
@@ -266,9 +288,7 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
                 <Icon
                   size={19}
                   strokeWidth={1.7}
-                  className={`shrink-0 ${
-                    active ? 'text-[#123985]' : 'text-current'
-                  }`}
+                  className={`shrink-0 ${active ? 'text-[#123985]' : 'text-current'}`}
                 />
 
                 {!collapsed && <span className="truncate">{item.label}</span>}
@@ -305,12 +325,8 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
 
           {!collapsed && (
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">
-                Super Admin
-              </span>
-              <span className="block truncate text-xs text-blue-100/70">
-                Full Access
-              </span>
+              <span className="block truncate text-sm font-semibold">Super Admin</span>
+              <span className="block truncate text-xs text-blue-100/70">Full Access</span>
             </span>
           )}
         </div>

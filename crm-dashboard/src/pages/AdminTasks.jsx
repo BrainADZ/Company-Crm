@@ -58,19 +58,20 @@ const priorityTone = {
   Low: 'border-emerald-200 bg-emerald-50 text-emerald-700',
 };
 
-const iconButtonClass = 'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700';
-const inputClass = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+const iconButtonClass =
+  'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700';
+const inputClass =
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 const labelClass = 'text-xs font-bold uppercase tracking-wide text-slate-500';
 
-const getInitials = (name = '') => (
+const getInitials = (name = '') =>
   name
     .split(' ')
     .filter(Boolean)
     .map((part) => part[0])
     .join('')
     .slice(0, 2)
-    .toUpperCase() || 'TM'
-);
+    .toUpperCase() || 'TM';
 
 const clampProgress = (value) => Math.max(0, Math.min(100, Number(value) || 0));
 
@@ -95,9 +96,7 @@ const Modal = ({ title, children, onClose }) => (
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="max-h-[calc(90vh-5rem)] overflow-y-auto p-5">
-        {children}
-      </div>
+      <div className="max-h-[calc(90vh-5rem)] overflow-y-auto p-5">{children}</div>
     </div>
   </div>
 );
@@ -136,7 +135,11 @@ const AdminTasks = () => {
 
       setProjects(projectRows || []);
       setTasks(taskRows || []);
-      setEmployees(Array.isArray(employeeResponse.data) ? employeeResponse.data : employeeResponse.data?.employees || []);
+      setEmployees(
+        Array.isArray(employeeResponse.data)
+          ? employeeResponse.data
+          : employeeResponse.data?.employees || [],
+      );
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Unable to load employee tasks');
     } finally {
@@ -149,43 +152,62 @@ const AdminTasks = () => {
     fetchWorkspace();
   }, [fetchWorkspace]);
 
-  const projectById = useMemo(() => (
-    projects.reduce((map, project) => {
-      map[String(project._id)] = project;
-      return map;
-    }, {})
-  ), [projects]);
+  const projectById = useMemo(
+    () =>
+      projects.reduce((map, project) => {
+        map[String(project._id)] = project;
+        return map;
+      }, {}),
+    [projects],
+  );
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
-  const filteredTasks = useMemo(() => (
-    tasks.filter((task) => {
-      const matchesSearch = !normalizedSearch || [
-        task.name,
-        task.projectName,
-        projectById[String(task.project)]?.name,
-        task.assignee,
-        task.assigneeEmail,
-        task.team,
-        task.status,
-        task.priority,
-        task.dependency,
-      ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
+  const filteredTasks = useMemo(
+    () =>
+      tasks.filter((task) => {
+        const matchesSearch =
+          !normalizedSearch ||
+          [
+            task.name,
+            task.projectName,
+            projectById[String(task.project)]?.name,
+            task.assignee,
+            task.assigneeEmail,
+            task.team,
+            task.status,
+            task.priority,
+            task.dependency,
+          ].some((value) =>
+            String(value || '')
+              .toLowerCase()
+              .includes(normalizedSearch),
+          );
 
-      const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
-      const matchesOwner = ownerFilter === 'all'
-        || task.assigneeEmail === ownerFilter
-        || task.assignee === ownerFilter;
+        const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
+        const matchesOwner =
+          ownerFilter === 'all' ||
+          task.assigneeEmail === ownerFilter ||
+          task.assignee === ownerFilter;
 
-      return matchesSearch && matchesStatus && matchesOwner;
-    })
-  ), [normalizedSearch, ownerFilter, projectById, statusFilter, tasks]);
+        return matchesSearch && matchesStatus && matchesOwner;
+      }),
+    [normalizedSearch, ownerFilter, projectById, statusFilter, tasks],
+  );
 
   const openTasks = useMemo(() => tasks.filter((task) => task.status !== 'Complete'), [tasks]);
-  const dueToday = useMemo(() => openTasks.filter((task) => task.due === todayKey).length, [openTasks]);
-  const overdue = useMemo(() => openTasks.filter((task) => task.due && task.due < todayKey).length, [openTasks]);
+  const dueToday = useMemo(
+    () => openTasks.filter((task) => task.due === todayKey).length,
+    [openTasks],
+  );
+  const overdue = useMemo(
+    () => openTasks.filter((task) => task.due && task.due < todayKey).length,
+    [openTasks],
+  );
   const milestoneCount = useMemo(() => tasks.filter((task) => task.milestone).length, [tasks]);
-  const completionRate = tasks.length ? Math.round((tasks.filter((task) => task.status === 'Complete').length / tasks.length) * 100) : 0;
+  const completionRate = tasks.length
+    ? Math.round((tasks.filter((task) => task.status === 'Complete').length / tasks.length) * 100)
+    : 0;
 
   const metricCards = [
     {
@@ -232,12 +254,14 @@ const AdminTasks = () => {
     },
   ];
 
-  const groupedTasks = useMemo(() => (
-    taskStatuses.map((status) => ({
-      status,
-      tasks: filteredTasks.filter((task) => task.status === status),
-    }))
-  ), [filteredTasks]);
+  const groupedTasks = useMemo(
+    () =>
+      taskStatuses.map((status) => ({
+        status,
+        tasks: filteredTasks.filter((task) => task.status === status),
+      })),
+    [filteredTasks],
+  );
 
   const updateForm = (field, value) => {
     setTaskForm((current) => ({ ...current, [field]: value }));
@@ -257,12 +281,15 @@ const AdminTasks = () => {
     setMessage('');
 
     try {
-      const selectedEmployee = employees.find((employee) => (
-        String(employee._id) === String(taskForm.assignee)
-        || employee.email === taskForm.assignee
-        || employee.name === taskForm.assignee
-      ));
-      const selectedProject = projects.find((project) => String(project._id) === String(taskForm.project));
+      const selectedEmployee = employees.find(
+        (employee) =>
+          String(employee._id) === String(taskForm.assignee) ||
+          employee.email === taskForm.assignee ||
+          employee.name === taskForm.assignee,
+      );
+      const selectedProject = projects.find(
+        (project) => String(project._id) === String(taskForm.project),
+      );
       const progress = taskForm.status === 'Complete' ? 100 : clampProgress(taskForm.progress);
 
       await createBusinessResource('project-tasks', {
@@ -289,8 +316,14 @@ const AdminTasks = () => {
   const updateTask = async (task, patch) => {
     const nextPatch = { ...patch };
     if (nextPatch.progress !== undefined) nextPatch.progress = clampProgress(nextPatch.progress);
-    if (nextPatch.status === 'Complete' && nextPatch.progress === undefined) nextPatch.progress = 100;
-    if (nextPatch.status && nextPatch.status !== 'Complete' && task.progress === 100 && nextPatch.progress === undefined) {
+    if (nextPatch.status === 'Complete' && nextPatch.progress === undefined)
+      nextPatch.progress = 100;
+    if (
+      nextPatch.status &&
+      nextPatch.status !== 'Complete' &&
+      task.progress === 100 &&
+      nextPatch.progress === undefined
+    ) {
       nextPatch.progress = 80;
     }
 
@@ -344,7 +377,19 @@ const AdminTasks = () => {
   };
 
   const downloadTaskCsv = () => {
-    const headings = ['Task', 'Project', 'Assignee', 'Email', 'Team', 'Due', 'Status', 'Priority', 'Progress', 'Dependency', 'Milestone'];
+    const headings = [
+      'Task',
+      'Project',
+      'Assignee',
+      'Email',
+      'Team',
+      'Due',
+      'Status',
+      'Priority',
+      'Progress',
+      'Dependency',
+      'Milestone',
+    ];
     const rows = filteredTasks.map((task) => [
       task.name,
       task.projectName || projectById[String(task.project)]?.name || 'General Task',
@@ -376,7 +421,10 @@ const AdminTasks = () => {
         <div className="h-24 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm" />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map((item) => (
-            <div key={item} className="h-28 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm" />
+            <div
+              key={item}
+              className="h-28 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm"
+            />
           ))}
         </div>
         <div className="h-96 animate-pulse rounded-md border border-slate-200 bg-white shadow-sm" />
@@ -392,10 +440,13 @@ const AdminTasks = () => {
             <ListTodo className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Employee task control</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              Employee task control
+            </p>
             <h1 className="text-2xl font-bold text-slate-950">Tasks</h1>
             <p className="mt-2 max-w-3xl text-sm font-medium text-slate-500">
-              Project and team tasks for employees. Sales import data remains in Clients/Sales; this section is for internal execution.
+              Project and team tasks for employees. Sales import data remains in Clients/Sales; this
+              section is for internal execution.
             </p>
           </div>
         </div>
@@ -411,23 +462,40 @@ const AdminTasks = () => {
               className="h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </label>
-          <button type="button" onClick={openTaskModal} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700">
+          <button
+            type="button"
+            onClick={openTaskModal}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"
+          >
             <Plus className="h-4 w-4" />
             Assign Task
           </button>
-          <button type="button" title="Refresh" onClick={() => fetchWorkspace({ silent: true })} className={iconButtonClass}>
+          <button
+            type="button"
+            title="Refresh"
+            onClick={() => fetchWorkspace({ silent: true })}
+            className={iconButtonClass}
+          >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
-          <button type="button" title="Export tasks" onClick={downloadTaskCsv} className={iconButtonClass}>
+          <button
+            type="button"
+            title="Export tasks"
+            onClick={downloadTaskCsv}
+            className={iconButtonClass}
+          >
             <Download className="h-4 w-4" />
           </button>
         </div>
       </section>
 
       {(message || error) && (
-        <div className={`rounded-lg border px-4 py-3 text-sm font-bold ${
-          error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-        }`}
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm font-bold ${
+            error
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
         >
           {error || message}
         </div>
@@ -437,9 +505,14 @@ const AdminTasks = () => {
         {metricCards.map((card) => {
           const Icon = card.icon;
           return (
-            <article key={card.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+            <article
+              key={card.label}
+              className="rounded-md border border-slate-200 bg-white p-4 shadow-sm"
+            >
               <div className="flex items-start justify-between gap-3">
-                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${card.tone}`}>
+                <span
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${card.tone}`}
+                >
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">
@@ -447,7 +520,9 @@ const AdminTasks = () => {
                 </span>
               </div>
               <p className="mt-3 text-2xl font-bold text-slate-950">{card.value}</p>
-              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{card.label}</p>
+              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">
+                {card.label}
+              </p>
               <p className="mt-1 text-xs font-medium text-slate-500">{card.copy}</p>
             </article>
           );
@@ -458,7 +533,9 @@ const AdminTasks = () => {
         <div className="flex flex-col gap-3 border-b border-slate-300 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-950">Task Register</h2>
-            <p className="mt-1 text-xs font-medium text-slate-500">Assign employee work, update progress, and track dependencies.</p>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              Assign employee work, update progress, and track dependencies.
+            </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <select
@@ -468,7 +545,10 @@ const AdminTasks = () => {
             >
               <option value="all">All assignees</option>
               {employees.map((employee) => (
-                <option key={employee._id || employee.email} value={employee.email || employee.name}>
+                <option
+                  key={employee._id || employee.email}
+                  value={employee.email || employee.name}
+                >
                   {employee.name || employee.email}
                 </option>
               ))}
@@ -479,7 +559,11 @@ const AdminTasks = () => {
               className="h-9 rounded-lg border border-slate-300 bg-white px-3 pr-8 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="all">All statuses</option>
-              {taskStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+              {taskStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -488,24 +572,41 @@ const AdminTasks = () => {
           <table className="min-w-[78rem] w-full table-fixed border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
-                <th className="w-72 border-b border-r border-slate-300 px-4 py-2 font-bold">Task</th>
-                <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">Assigned</th>
+                <th className="w-72 border-b border-r border-slate-300 px-4 py-2 font-bold">
+                  Task
+                </th>
+                <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">
+                  Assigned
+                </th>
                 <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">Due</th>
-                <th className="w-44 border-b border-r border-slate-300 px-4 py-2 font-bold">Status</th>
-                <th className="w-44 border-b border-r border-slate-300 px-4 py-2 font-bold">Progress</th>
-                <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">Priority</th>
-                <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">Dependency</th>
-                <th className="w-20 border-b border-slate-300 px-4 py-2 text-right font-bold">Action</th>
+                <th className="w-44 border-b border-r border-slate-300 px-4 py-2 font-bold">
+                  Status
+                </th>
+                <th className="w-44 border-b border-r border-slate-300 px-4 py-2 font-bold">
+                  Progress
+                </th>
+                <th className="w-36 border-b border-r border-slate-300 px-4 py-2 font-bold">
+                  Priority
+                </th>
+                <th className="w-52 border-b border-r border-slate-300 px-4 py-2 font-bold">
+                  Dependency
+                </th>
+                <th className="w-20 border-b border-slate-300 px-4 py-2 text-right font-bold">
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody>
               {filteredTasks.map((task) => {
-                const projectName = task.projectName || projectById[String(task.project)]?.name || 'General Task';
+                const projectName =
+                  task.projectName || projectById[String(task.project)]?.name || 'General Task';
                 return (
                   <tr key={task._id} className="bg-white transition hover:bg-blue-50/40">
                     <td className="border-b border-r border-slate-200 px-4 py-3">
                       <p className="truncate font-bold text-slate-950">{task.name}</p>
-                      <p className="mt-0.5 truncate text-xs font-semibold text-blue-700">{projectName}</p>
+                      <p className="mt-0.5 truncate text-xs font-semibold text-blue-700">
+                        {projectName}
+                      </p>
                       {task.milestone && (
                         <span className="mt-2 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
                           Milestone
@@ -518,13 +619,19 @@ const AdminTasks = () => {
                           {getInitials(task.assignee)}
                         </span>
                         <span className="min-w-0">
-                          <span className="block truncate font-semibold text-slate-800">{task.assignee || 'Unassigned'}</span>
-                          <span className="block truncate text-xs text-slate-500">{task.team || task.assigneeEmail || 'Team'}</span>
+                          <span className="block truncate font-semibold text-slate-800">
+                            {task.assignee || 'Unassigned'}
+                          </span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {task.team || task.assigneeEmail || 'Team'}
+                          </span>
                         </span>
                       </div>
                     </td>
                     <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <span className={`font-bold ${task.status !== 'Complete' && task.due && task.due < todayKey ? 'text-red-700' : 'text-slate-700'}`}>
+                      <span
+                        className={`font-bold ${task.status !== 'Complete' && task.due && task.due < todayKey ? 'text-red-700' : 'text-slate-700'}`}
+                      >
                         {formatDate(task.due)}
                       </span>
                     </td>
@@ -534,7 +641,11 @@ const AdminTasks = () => {
                         onChange={(event) => updateTask(task, { status: event.target.value })}
                         className={`w-full rounded-lg border px-2 py-1.5 text-xs font-bold outline-none ${statusTone[task.status] || statusTone.Backlog}`}
                       >
-                        {taskStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                        {taskStatuses.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td className="border-b border-r border-slate-200 px-4 py-3">
@@ -548,12 +659,17 @@ const AdminTasks = () => {
                           className="h-9 w-20 rounded-lg border border-slate-300 px-2 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                         <div className="h-2 flex-1 rounded-full bg-slate-100">
-                          <div className="h-2 rounded-full bg-blue-600" style={{ width: `${clampProgress(task.progress)}%` }} />
+                          <div
+                            className="h-2 rounded-full bg-blue-600"
+                            style={{ width: `${clampProgress(task.progress)}%` }}
+                          />
                         </div>
                       </div>
                     </td>
                     <td className="border-b border-r border-slate-200 px-4 py-3">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${priorityTone[task.priority] || priorityTone.Medium}`}>
+                      <span
+                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${priorityTone[task.priority] || priorityTone.Medium}`}
+                      >
                         {task.priority || 'Medium'}
                       </span>
                     </td>
@@ -561,7 +677,12 @@ const AdminTasks = () => {
                       <span className="block truncate">{task.dependency || '-'}</span>
                     </td>
                     <td className="border-b border-slate-200 px-4 py-3 text-right">
-                      <button type="button" onClick={() => removeTask(task)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100" title="Delete task">
+                      <button
+                        type="button"
+                        onClick={() => removeTask(task)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100"
+                        title="Delete task"
+                      >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </td>
@@ -572,7 +693,9 @@ const AdminTasks = () => {
                 <tr>
                   <td colSpan="8" className="h-64 px-4 py-16 text-center">
                     <p className="text-base font-bold text-slate-700">No employee tasks found</p>
-                    <p className="mt-2 text-sm text-slate-500">Use Assign Task to create project or general work for the team.</p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      Use Assign Task to create project or general work for the team.
+                    </p>
                   </td>
                 </tr>
               )}
@@ -585,7 +708,9 @@ const AdminTasks = () => {
         <article className="rounded-md border border-slate-300 bg-white shadow-sm">
           <div className="border-b border-slate-300 px-4 py-3">
             <h2 className="text-base font-bold text-slate-950">Workflow Board</h2>
-            <p className="mt-1 text-xs font-medium text-slate-500">Same flow as the business OS task board, backed by the CRM database.</p>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              Same flow as the business OS task board, backed by the CRM database.
+            </p>
           </div>
           <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-5">
             {groupedTasks.map((column) => (
@@ -602,7 +727,9 @@ const AdminTasks = () => {
               >
                 <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
                   <span className="text-sm font-bold text-slate-800">{column.status}</span>
-                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-500">{column.tasks.length}</span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-500">
+                    {column.tasks.length}
+                  </span>
                 </div>
                 <div className="space-y-2 p-3">
                   {column.tasks.map((task) => (
@@ -613,7 +740,9 @@ const AdminTasks = () => {
                       onDragEnd={finishTaskDrag}
                       title="Move task"
                       className={`cursor-grab select-none rounded-md border border-slate-200 bg-white p-3 shadow-sm transition active:cursor-grabbing ${
-                        draggedTaskId === task._id ? 'opacity-50 ring-2 ring-blue-200' : 'hover:border-blue-200 hover:shadow-md'
+                        draggedTaskId === task._id
+                          ? 'opacity-50 ring-2 ring-blue-200'
+                          : 'hover:border-blue-200 hover:shadow-md'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -621,19 +750,26 @@ const AdminTasks = () => {
                           <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                           <p className="min-w-0 text-sm font-bold text-slate-950">{task.name}</p>
                         </div>
-                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${priorityTone[task.priority] || priorityTone.Medium}`}>
+                        <span
+                          className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${priorityTone[task.priority] || priorityTone.Medium}`}
+                        >
                           {task.priority || 'Medium'}
                         </span>
                       </div>
                       <p className="mt-1 truncate text-xs font-semibold text-blue-700">
-                        {task.projectName || projectById[String(task.project)]?.name || 'General Task'}
+                        {task.projectName ||
+                          projectById[String(task.project)]?.name ||
+                          'General Task'}
                       </p>
                       <div className="mt-3 flex items-center justify-between gap-2 text-xs font-semibold text-slate-500">
                         <span>{task.assignee || 'Unassigned'}</span>
                         <span>{formatDate(task.due)}</span>
                       </div>
                       <div className="mt-3 h-2 rounded-full bg-slate-100">
-                        <div className="h-2 rounded-full bg-blue-600" style={{ width: `${clampProgress(task.progress)}%` }} />
+                        <div
+                          className="h-2 rounded-full bg-blue-600"
+                          style={{ width: `${clampProgress(task.progress)}%` }}
+                        />
                       </div>
                     </div>
                   ))}
@@ -665,19 +801,32 @@ const AdminTasks = () => {
               </label>
               <label className="space-y-1">
                 <span className={labelClass}>Project</span>
-                <select value={taskForm.project} onChange={(event) => updateForm('project', event.target.value)} className={inputClass}>
+                <select
+                  value={taskForm.project}
+                  onChange={(event) => updateForm('project', event.target.value)}
+                  className={inputClass}
+                >
                   <option value="">General Task</option>
                   {projects.map((project) => (
-                    <option key={project._id} value={project._id}>{project.name}</option>
+                    <option key={project._id} value={project._id}>
+                      {project.name}
+                    </option>
                   ))}
                 </select>
               </label>
               <label className="space-y-1">
                 <span className={labelClass}>Assignee</span>
-                <select value={taskForm.assignee} onChange={(event) => updateForm('assignee', event.target.value)} className={inputClass}>
+                <select
+                  value={taskForm.assignee}
+                  onChange={(event) => updateForm('assignee', event.target.value)}
+                  className={inputClass}
+                >
                   <option value="">Unassigned</option>
                   {employees.map((employee) => (
-                    <option key={employee._id || employee.email} value={employee._id || employee.email}>
+                    <option
+                      key={employee._id || employee.email}
+                      value={employee._id || employee.email}
+                    >
                       {employee.name || employee.email}
                     </option>
                   ))}
@@ -685,33 +834,74 @@ const AdminTasks = () => {
               </label>
               <label className="space-y-1">
                 <span className={labelClass}>Team</span>
-                <select value={taskForm.team} onChange={(event) => updateForm('team', event.target.value)} className={inputClass}>
-                  {teamOptions.map((team) => <option key={team} value={team}>{team}</option>)}
+                <select
+                  value={taskForm.team}
+                  onChange={(event) => updateForm('team', event.target.value)}
+                  className={inputClass}
+                >
+                  {teamOptions.map((team) => (
+                    <option key={team} value={team}>
+                      {team}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="space-y-1">
                 <span className={labelClass}>Due date</span>
-                <input type="date" value={taskForm.due} onChange={(event) => updateForm('due', event.target.value)} className={inputClass} />
+                <input
+                  type="date"
+                  value={taskForm.due}
+                  onChange={(event) => updateForm('due', event.target.value)}
+                  className={inputClass}
+                />
               </label>
               <label className="space-y-1">
                 <span className={labelClass}>Status</span>
-                <select value={taskForm.status} onChange={(event) => updateForm('status', event.target.value)} className={inputClass}>
-                  {taskStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                <select
+                  value={taskForm.status}
+                  onChange={(event) => updateForm('status', event.target.value)}
+                  className={inputClass}
+                >
+                  {taskStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="space-y-1">
                 <span className={labelClass}>Priority</span>
-                <select value={taskForm.priority} onChange={(event) => updateForm('priority', event.target.value)} className={inputClass}>
-                  {priorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+                <select
+                  value={taskForm.priority}
+                  onChange={(event) => updateForm('priority', event.target.value)}
+                  className={inputClass}
+                >
+                  {priorityOptions.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="space-y-1">
                 <span className={labelClass}>Progress</span>
-                <input type="number" min="0" max="100" value={taskForm.progress} onChange={(event) => updateForm('progress', event.target.value)} className={inputClass} />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={taskForm.progress}
+                  onChange={(event) => updateForm('progress', event.target.value)}
+                  className={inputClass}
+                />
               </label>
               <label className="space-y-1">
                 <span className={labelClass}>Dependency</span>
-                <input value={taskForm.dependency} onChange={(event) => updateForm('dependency', event.target.value)} className={inputClass} placeholder="Design approval, content, payment..." />
+                <input
+                  value={taskForm.dependency}
+                  onChange={(event) => updateForm('dependency', event.target.value)}
+                  className={inputClass}
+                  placeholder="Design approval, content, payment..."
+                />
               </label>
               <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <input
@@ -724,10 +914,18 @@ const AdminTasks = () => {
               </label>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-              <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+              >
                 Cancel
               </button>
-              <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
                 {isSaving ? 'Saving...' : 'Assign Task'}
               </button>
             </div>

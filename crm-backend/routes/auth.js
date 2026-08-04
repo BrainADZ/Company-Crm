@@ -21,7 +21,8 @@ const rateLimitLogin = (req, res, next) => {
   }
   current.count += 1;
   loginAttempts.set(key, current);
-  if (current.count > MAX_ATTEMPTS) return res.status(429).json({ message: 'Too many login attempts. Try again later.' });
+  if (current.count > MAX_ATTEMPTS)
+    return res.status(429).json({ message: 'Too many login attempts. Try again later.' });
   req.loginAttemptKey = key;
   return next();
 };
@@ -58,21 +59,28 @@ const handleLogin = async (req, res) => {
 
   try {
     const user = await User.findOne({
-      email: String(email || '').trim().toLowerCase(),
+      email: String(email || '')
+        .trim()
+        .toLowerCase(),
       isDeleted: { $ne: true },
     }).select('+password');
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    const isMatch = user.password && await bcrypt.compare(String(password || ''), user.password);
+    const isMatch = user.password && (await bcrypt.compare(String(password || ''), user.password));
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    if (user.accountStatus !== 'active') return res.status(403).json({ message: `Account is ${user.accountStatus}` });
+    if (user.accountStatus !== 'active')
+      return res.status(403).json({ message: `Account is ${user.accountStatus}` });
 
-    if (user.role === 'admin' && (user.roleKey !== 'super_admin' || COMMUNITY_KEYS.some((key) => !(user.communities || []).includes(key)))) {
+    if (
+      user.role === 'admin' &&
+      (user.roleKey !== 'super_admin' ||
+        COMMUNITY_KEYS.some((key) => !(user.communities || []).includes(key)))
+    ) {
       user.roleKey = 'super_admin';
       user.crmRole = 'super_admin';
       user.communities = COMMUNITY_KEYS;
@@ -96,7 +104,15 @@ const handleLogin = async (req, res) => {
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: TOKEN_EXPIRES_IN });
 
     loginAttempts.delete(req.loginAttemptKey);
-    await writeAuditLog({ req, actorUserId: user._id, targetUserId: user._id, action: 'login_success', resource: 'auth', resourceId: user._id, communityKey: user.primaryCommunity });
+    await writeAuditLog({
+      req,
+      actorUserId: user._id,
+      targetUserId: user._id,
+      action: 'login_success',
+      resource: 'auth',
+      resourceId: user._id,
+      communityKey: user.primaryCommunity,
+    });
     return res.json({
       token,
       workspace: user.role === 'admin' ? 'admin' : 'employee',

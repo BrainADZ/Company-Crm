@@ -54,15 +54,18 @@ const demoRecipients = [
 const templates = [
   {
     title: 'Follow-up',
-    message: 'Hi {name}, this is a quick follow-up from Company CRM. Are you available for a short discussion today?',
+    message:
+      'Hi {name}, this is a quick follow-up from Company CRM. Are you available for a short discussion today?',
   },
   {
     title: 'Meeting reminder',
-    message: 'Hello {name}, reminder for our scheduled meeting. Please confirm your availability. Thank you.',
+    message:
+      'Hello {name}, reminder for our scheduled meeting. Please confirm your availability. Thank you.',
   },
   {
     title: 'Offer intro',
-    message: 'Hi {name}, we have a CRM solution update that may help your team manage leads faster. Would you like a demo?',
+    message:
+      'Hi {name}, we have a CRM solution update that may help your team manage leads faster. Would you like a demo?',
   },
 ];
 
@@ -86,14 +89,13 @@ const loadLogs = () => {
   }
 };
 
-const formatTime = (value) => (
+const formatTime = (value) =>
   new Intl.DateTimeFormat('en-IN', {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(value))
-);
+  }).format(new Date(value));
 
 const WhatsAppDemo = () => {
   const [selectedIds, setSelectedIds] = useState(['grp-aahar-2025']);
@@ -102,25 +104,30 @@ const WhatsAppDemo = () => {
   const [logs, setLogs] = useState(loadLogs);
   const [notice, setNotice] = useState('');
 
-  const selectedRecipients = useMemo(() => (
-    demoRecipients.filter((recipient) => selectedIds.includes(recipient.id))
-  ), [selectedIds]);
+  const selectedRecipients = useMemo(
+    () => demoRecipients.filter((recipient) => selectedIds.includes(recipient.id)),
+    [selectedIds],
+  );
 
   const previewRecipient = selectedRecipients[0] || demoRecipients[0];
   const previewMessage = message.replaceAll('{name}', previewRecipient.name);
 
   const toggleRecipient = (recipientId) => {
     setNotice('');
-    setSelectedIds((previous) => (
+    setSelectedIds((previous) =>
       previous.includes(recipientId)
         ? previous.filter((id) => id !== recipientId)
-        : [...previous, recipientId]
-    ));
+        : [...previous, recipientId],
+    );
   };
 
   const selectByType = (type) => {
     setNotice('');
-    setSelectedIds(demoRecipients.filter((recipient) => recipient.type === type).map((recipient) => recipient.id));
+    setSelectedIds(
+      demoRecipients
+        .filter((recipient) => recipient.type === type)
+        .map((recipient) => recipient.id),
+    );
   };
 
   const handleSendDemo = () => {
@@ -146,7 +153,9 @@ const WhatsAppDemo = () => {
 
     setLogs(nextLogs);
     localStorage.setItem('whatsappDemoLogs', JSON.stringify(nextLogs));
-    setNotice(`Demo campaign "${campaignName}" prepared for ${selectedRecipients.length} recipient${selectedRecipients.length > 1 ? 's' : ''}.`);
+    setNotice(
+      `Demo campaign "${campaignName}" prepared for ${selectedRecipients.length} recipient${selectedRecipients.length > 1 ? 's' : ''}.`,
+    );
   };
 
   return (
@@ -156,9 +165,12 @@ const WhatsAppDemo = () => {
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-semibold text-emerald-600">WhatsApp campaign demo</p>
-            <h1 className="mt-1.5 text-2xl font-semibold text-slate-950">Bulk WhatsApp Messaging</h1>
+            <h1 className="mt-1.5 text-2xl font-semibold text-slate-950">
+              Bulk WhatsApp Messaging
+            </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Select CRM groups or individual contacts, prepare a message, and show the client how bulk messaging will work once WhatsApp API is connected.
+              Select CRM groups or individual contacts, prepare a message, and show the client how
+              bulk messaging will work once WhatsApp API is connected.
             </p>
           </div>
           <span className="w-fit rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
@@ -172,13 +184,23 @@ const WhatsAppDemo = () => {
           <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-950">Recipients</h2>
-              <p className="mt-1 text-sm text-slate-500">Choose multiple groups or people from CRM.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Choose multiple groups or people from CRM.
+              </p>
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => selectByType('Group')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50">
+              <button
+                type="button"
+                onClick={() => selectByType('Group')}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+              >
                 Groups
               </button>
-              <button type="button" onClick={() => selectByType('Person')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50">
+              <button
+                type="button"
+                onClick={() => selectByType('Person')}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+              >
                 People
               </button>
             </div>
@@ -196,13 +218,23 @@ const WhatsAppDemo = () => {
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${recipient.tone}`}>
+                  <span
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${recipient.tone}`}
+                  >
                     {recipient.type}
                   </span>
-                  <span className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                    selectedIds.includes(recipient.id) ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 text-transparent'
-                  }`}>
-                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="3">
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                      selectedIds.includes(recipient.id)
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : 'border-slate-300 text-transparent'
+                    }`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-3.5 w-3.5 fill-none stroke-current"
+                      strokeWidth="3"
+                    >
                       <path d="m5 12 4 4L19 6" />
                     </svg>
                   </span>
@@ -218,7 +250,10 @@ const WhatsAppDemo = () => {
         <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 p-5">
             <h2 className="text-base font-semibold text-slate-950">Message composer</h2>
-            <p className="mt-1 text-sm text-slate-500">Use <span className="font-semibold text-slate-700">{'{name}'}</span> to personalize each message.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Use <span className="font-semibold text-slate-700">{'{name}'}</span> to personalize
+              each message.
+            </p>
           </div>
           <div className="space-y-4 p-5">
             <label className="block">
@@ -270,11 +305,13 @@ const WhatsAppDemo = () => {
             </div>
 
             {notice && (
-              <p className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-                notice.includes('Select') || notice.includes('Write')
-                  ? 'border-red-200 bg-red-50 text-red-700'
-                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              }`}>
+              <p
+                className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                  notice.includes('Select') || notice.includes('Write')
+                    ? 'border-red-200 bg-red-50 text-red-700'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}
+              >
                 {notice}
               </p>
             )}
@@ -301,10 +338,16 @@ const WhatsAppDemo = () => {
             {[
               ['1', 'Select CRM audience', 'Groups, filtered statuses, or one-to-one contact.'],
               ['2', 'Compose message', 'Templates and {name} personalization supported.'],
-              ['3', 'Send through API', 'Later we plug WhatsApp Cloud API / provider webhook here.'],
+              [
+                '3',
+                'Send through API',
+                'Later we plug WhatsApp Cloud API / provider webhook here.',
+              ],
             ].map(([step, title, copy]) => (
               <div key={step} className="flex gap-3 rounded-xl border border-slate-200 p-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-700">{step}</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-700">
+                  {step}
+                </span>
                 <div>
                   <p className="text-sm font-semibold text-slate-800">{title}</p>
                   <p className="mt-1 text-sm text-slate-500">{copy}</p>
@@ -317,7 +360,9 @@ const WhatsAppDemo = () => {
         <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 p-5">
             <h2 className="text-base font-semibold text-slate-950">Demo delivery log</h2>
-            <p className="mt-1 text-sm text-slate-500">Shows how sent, queued, and campaign history will appear.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Shows how sent, queued, and campaign history will appear.
+            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
@@ -337,13 +382,19 @@ const WhatsAppDemo = () => {
                     <td className="whitespace-nowrap px-5 py-4 text-slate-600">{log.type}</td>
                     <td className="max-w-md truncate px-5 py-4 text-slate-500">{log.message}</td>
                     <td className="whitespace-nowrap px-5 py-4">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        log.status === 'Queued' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
-                      }`}>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          log.status === 'Queued'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
                         {log.status}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-5 py-4 text-slate-500">{formatTime(log.createdAt)}</td>
+                    <td className="whitespace-nowrap px-5 py-4 text-slate-500">
+                      {formatTime(log.createdAt)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -4,7 +4,8 @@ const path = require('path');
 const rootDir = path.resolve(__dirname, '..');
 const sourceDir = path.join(rootDir, 'src');
 const extensions = ['', '.js', '.jsx', '.css', '.json'];
-const importPattern = /(?:import\s+(?:[^'"]+\s+from\s+)?|export\s+[^'"]+\s+from\s+|import\s*\()\s*['"]([^'"]+)['"]/g;
+const importPattern =
+  /(?:import\s+(?:[^'"]+\s+from\s+)?|export\s+[^'"]+\s+from\s+|import\s*\()\s*['"]([^'"]+)['"]/g;
 
 const walkFiles = (directory) => {
   const files = [];
@@ -41,10 +42,7 @@ const resolveImport = (fromFile, specifier) => {
   const basePath = path.resolve(path.dirname(fromFile), specifier);
   const candidates = extensions.map((extension) => `${basePath}${extension}`);
 
-  candidates.push(
-    path.join(basePath, 'index.js'),
-    path.join(basePath, 'index.jsx'),
-  );
+  candidates.push(path.join(basePath, 'index.js'), path.join(basePath, 'index.jsx'));
 
   return candidates.find(pathExistsWithExactCase);
 };

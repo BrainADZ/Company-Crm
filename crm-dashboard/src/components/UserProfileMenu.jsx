@@ -4,9 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { clearAuthToken } from '../utils/auth';
 import { API_BASE_URL, getAssetUrl } from '../config/api';
 
-const getInitials = (name = '') => (
-  name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'US'
-);
+const getInitials = (name = '') =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'US';
 
 const iconClass = 'h-4 w-4 fill-none stroke-current';
 
@@ -82,9 +87,15 @@ const UserProfileMenu = ({ role }) => {
   const displayRole = profile?.role || role;
 
   const avatarMarkup = (sizeClass = 'h-10 w-10', textClass = 'text-sm') => (
-    <span className={`flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-slate-900 to-teal-700 font-bold text-white shadow-sm ring-2 ring-white`}>
+    <span
+      className={`flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-slate-900 to-teal-700 font-bold text-white shadow-sm ring-2 ring-white`}
+    >
       {avatarUrl ? (
-        <img src={avatarUrl} alt={profile?.name || 'Profile'} className="h-full w-full object-cover" />
+        <img
+          src={avatarUrl}
+          alt={profile?.name || 'Profile'}
+          className="h-full w-full object-cover"
+        />
       ) : (
         <span className={textClass}>{getInitials(profile?.name)}</span>
       )}
@@ -129,14 +140,22 @@ const UserProfileMenu = ({ role }) => {
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
             >
               <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-                <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  viewBox="0 0 24 24"
+                  className={iconClass}
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
                   <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
                 </svg>
               </span>
               <span>
                 <span className="block">Settings</span>
-                <span className="mt-0.5 block text-xs font-medium text-slate-400">Profile, security and login details</span>
+                <span className="mt-0.5 block text-xs font-medium text-slate-400">
+                  Profile, security and login details
+                </span>
               </span>
             </button>
 
@@ -147,14 +166,22 @@ const UserProfileMenu = ({ role }) => {
               className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50"
             >
               <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-500">
-                <svg viewBox="0 0 24 24" className={iconClass} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  viewBox="0 0 24 24"
+                  className={iconClass}
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                   <path d="m16 17 5-5-5-5m5 5H9" />
                 </svg>
               </span>
               <span>
                 <span className="block">Log out</span>
-                <span className="mt-0.5 block text-xs font-medium text-red-400">End this session</span>
+                <span className="mt-0.5 block text-xs font-medium text-red-400">
+                  End this session
+                </span>
               </span>
             </button>
           </div>

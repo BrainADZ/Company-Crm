@@ -12,7 +12,18 @@ const getIpAddress = (req) => {
   return (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req?.ip) || '';
 };
 
-const writeAuditLog = async ({ req, actorUserId, targetUserId, action, resource, resourceId, previousValue, newValue, communityKey, metadata }) => (
+const writeAuditLog = async ({
+  req,
+  actorUserId,
+  targetUserId,
+  action,
+  resource,
+  resourceId,
+  previousValue,
+  newValue,
+  communityKey,
+  metadata,
+}) =>
   AuditLog.create({
     actorUserId: actorUserId || req?.user?._id || req?.user?.id || null,
     targetUserId: targetUserId || null,
@@ -24,7 +35,6 @@ const writeAuditLog = async ({ req, actorUserId, targetUserId, action, resource,
     communityKey: communityKey || '',
     ipAddress: getIpAddress(req),
     metadata: metadata || {},
-  })
-);
+  });
 
 module.exports = { writeAuditLog, stripSecrets };

@@ -51,3 +51,16 @@ export const getAuthenticatedRole = () => {
   if (getValidToken('employee')) return 'employee';
   return null;
 };
+
+export const getAuthenticatedUser = () => {
+  const adminToken = getValidToken('admin');
+  const employeeToken = getValidToken('employee');
+  return decodeJwtPayload(adminToken || employeeToken || '')?.user || null;
+};
+
+export const isSuperAdminSession = () => {
+  const user = getAuthenticatedUser();
+  return (
+    user?.role === 'admin' && (user?.roleKey === 'super_admin' || user?.crmRole === 'super_admin')
+  );
+};

@@ -16,6 +16,9 @@ const userRoutes = require('./routes/users');
 const roleRoutes = require('./routes/roles');
 const communityRoutes = require('./routes/communities');
 const permissionRoutes = require('./routes/permissions');
+const employeeDirectoryRoutes = require('./routes/employeeDirectory');
+const meetingRoutes = require('./routes/meetings');
+const quotationRoutes = require('./routes/quotations');
 const path = require('path');
 
 dotenv.config();
@@ -23,40 +26,50 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-const parseAllowedOrigins = (value) => (
+const parseAllowedOrigins = (value) =>
   value
-    ? value.split(',').map((origin) => origin.trim()).filter(Boolean)
-    : ['http://localhost:5173', 'http://localhost:5174', 'https://democrm.brainadzlive.in', 'http://democrm.brainadzlive.in']
-);
+    ? value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+    : [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'https://democrm.brainadzlive.in',
+        'http://democrm.brainadzlive.in',
+      ];
 
 const allowedOrigins = parseAllowedOrigins(process.env.CLIENT_ORIGINS);
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  optionsSuccessStatus: 200,
-}));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    optionsSuccessStatus: 200,
+  }),
+);
 
 // Body parser middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 
 // Serve static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
+mongoose
+  .connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
   .then(() => console.log('MongoDB connected'))
   .catch((err) => console.error('MongoDB connection error:', err));
 
@@ -73,6 +86,9 @@ app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/communities', communityRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/employee-directory', employeeDirectoryRoutes);
+app.use('/api/meetings', meetingRoutes);
+app.use('/api/quotations', quotationRoutes);
 
 // Socket.IO Setup
 const io = socketIo(server, {
@@ -85,7 +101,7 @@ const io = socketIo(server, {
 
 io.on('connection', (socket) => {
   console.log('A user connected to Socket.IO');
-  
+
   // Listen for custom events or messages
   socket.on('disconnect', () => {
     console.log('User disconnected from Socket.IO');
@@ -98,7 +114,10 @@ app.use((err, req, res, next) => {
   console.error('Error message:', err.message);
   if (res.headersSent) return next(err);
   const status = err.status || (err.code === 11000 ? 409 : 500);
-  const message = err.code === 11000 ? 'A record with the same unique value already exists' : (err.message || 'Server error');
+  const message =
+    err.code === 11000
+      ? 'A record with the same unique value already exists'
+      : err.message || 'Server error';
   return res.status(status).json({ message });
 });
 

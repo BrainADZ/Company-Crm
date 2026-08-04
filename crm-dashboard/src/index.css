@@ -1,7 +1,7 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
-  --font-sans: "Manrope", "Segoe UI", sans-serif;
+  --font-sans: 'Manrope', 'Segoe UI', sans-serif;
 }
 
 @layer base {
@@ -39,7 +39,7 @@
   a,
   select:not(:disabled),
   label[for],
-  input[type="file"]:not(:disabled) {
+  input[type='file']:not(:disabled) {
     cursor: pointer;
   }
 }

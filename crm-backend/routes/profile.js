@@ -6,18 +6,21 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-const getAlias = (user) => (
-  user.alias
-  || user.name?.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 8).toUpperCase()
-  || user.email?.split('@')[0]?.slice(0, 8).toUpperCase()
-  || 'USER'
-);
+const getAlias = (user) =>
+  user.alias ||
+  user.name
+    ?.split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 8)
+    .toUpperCase() ||
+  user.email?.split('@')[0]?.slice(0, 8).toUpperCase() ||
+  'USER';
 
-const getNickname = (user) => (
-  user.nickname || user.email?.split('@')[0] || user.name || 'User'
-);
+const getNickname = (user) => user.nickname || user.email?.split('@')[0] || user.name || 'User';
 
-const loginHistoryResponse = (history = []) => (
+const loginHistoryResponse = (history = []) =>
   history
     .slice()
     .sort((a, b) => new Date(b.loginTime) - new Date(a.loginTime))
@@ -33,8 +36,7 @@ const loginHistoryResponse = (history = []) => (
       loginUrl: entry.loginUrl || '',
       location: entry.location || '',
       userAgent: entry.userAgent || '',
-    }))
-);
+    }));
 
 const storage = multer.diskStorage({
   destination: (req, file, callback) => {
@@ -204,7 +206,8 @@ router.put('/preferences', authMiddleware, async (req, res) => {
     if (typeof timezone === 'string' && timezone.trim()) user.timezone = timezone.trim();
     if (typeof locale === 'string' && locale.trim()) user.locale = locale.trim();
     if (typeof language === 'string' && language.trim()) user.language = language.trim();
-    if (typeof emailEncoding === 'string' && emailEncoding.trim()) user.emailEncoding = emailEncoding.trim();
+    if (typeof emailEncoding === 'string' && emailEncoding.trim())
+      user.emailEncoding = emailEncoding.trim();
 
     await user.save();
     return res.json({
@@ -228,11 +231,16 @@ router.put('/password', authMiddleware, async (req, res) => {
     const { currentPassword, newPassword, securityQuestion, securityAnswer } = req.body;
 
     if (!currentPassword || !newPassword || !securityQuestion || !securityAnswer) {
-      return res.status(400).json({ message: 'Current password, new password, security question, and security answer are required' });
+      return res.status(400).json({
+        message:
+          'Current password, new password, security question, and security answer are required',
+      });
     }
 
     if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-      return res.status(400).json({ message: 'Password must contain at least 8 characters, 1 letter, and 1 number' });
+      return res
+        .status(400)
+        .json({ message: 'Password must contain at least 8 characters, 1 letter, and 1 number' });
     }
 
     const isMatch = await bcrypt.compare(currentPassword, user.password);

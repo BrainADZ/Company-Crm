@@ -32,16 +32,24 @@ const normalizeCell = (cell) => {
 const normalizeColumnName = (column) => normalizeCell(column).toLowerCase();
 
 const addWorkColumnsAfterWebsite = (columns = [], rows = []) => {
-  const normalizedColumns = columns.map((column, index) => normalizeCell(column) || `Column ${index + 1}`);
+  const normalizedColumns = columns.map(
+    (column, index) => normalizeCell(column) || `Column ${index + 1}`,
+  );
   const existingColumnNames = new Set(normalizedColumns.map(normalizeColumnName));
-  const columnsToAdd = CLIENT_WORK_COLUMNS.filter((column) => !existingColumnNames.has(column.toLowerCase()));
-  const normalizedRows = rows.map((row) => normalizedColumns.map((column, index) => normalizeCell(row[index])));
+  const columnsToAdd = CLIENT_WORK_COLUMNS.filter(
+    (column) => !existingColumnNames.has(column.toLowerCase()),
+  );
+  const normalizedRows = rows.map((row) =>
+    normalizedColumns.map((column, index) => normalizeCell(row[index])),
+  );
 
   if (columnsToAdd.length === 0) {
     return { columns: normalizedColumns, rows: normalizedRows };
   }
 
-  const websiteIndex = normalizedColumns.findIndex((column) => normalizeColumnName(column) === 'website');
+  const websiteIndex = normalizedColumns.findIndex(
+    (column) => normalizeColumnName(column) === 'website',
+  );
   const insertIndex = websiteIndex === -1 ? normalizedColumns.length : websiteIndex + 1;
 
   return {
@@ -78,7 +86,10 @@ const getAssignedRowsForEmployee = (datasets, employeeId) => {
 
   datasets.forEach((dataset) => {
     const datasetObject = dataset.toObject();
-    const { columns, rows } = addWorkColumnsAfterWebsite(datasetObject.columns || [], datasetObject.rows || []);
+    const { columns, rows } = addWorkColumnsAfterWebsite(
+      datasetObject.columns || [],
+      datasetObject.rows || [],
+    );
     const assignments = datasetObject.rowAssignments || [];
 
     assignments
@@ -88,9 +99,10 @@ const getAssignedRowsForEmployee = (datasets, employeeId) => {
         const row = rows[rowIndex];
         if (!row) return;
 
-        const clientName = getCellValue(columns, row, ['Client Name', 'Client Name '])
-          || getCellValue(columns, row, ['Company Name', 'Company Name '])
-          || `Row ${rowIndex + 1}`;
+        const clientName =
+          getCellValue(columns, row, ['Client Name', 'Client Name ']) ||
+          getCellValue(columns, row, ['Company Name', 'Company Name ']) ||
+          `Row ${rowIndex + 1}`;
         const companyName = getCellValue(columns, row, ['Company Name', 'Company Name ']);
 
         assignedRows.push({
@@ -125,7 +137,10 @@ router.get('/employee/assigned-rows', authMiddleware, requireEmployee, async (re
 
 router.get('/meetings/me', authMiddleware, requireEmployee, async (req, res) => {
   try {
-    const meetings = await Meeting.find({ employee: req.user.id }).sort({ meetingDate: 1, meetingTime: 1 });
+    const meetings = await Meeting.find({ employee: req.user.id }).sort({
+      meetingDate: 1,
+      meetingTime: 1,
+    });
     return res.json(meetings);
   } catch (error) {
     console.error('Error fetching employee meetings:', error);
@@ -160,9 +175,11 @@ router.post('/meetings', authMiddleware, requireEmployee, async (req, res) => {
       return res.status(404).json({ message: 'Dataset not found' });
     }
 
-    const assignment = (dataset.rowAssignments || []).find((item) => (
-      Number(item.rowIndex) === normalizedRowIndex && String(item.employee) === String(req.user.id)
-    ));
+    const assignment = (dataset.rowAssignments || []).find(
+      (item) =>
+        Number(item.rowIndex) === normalizedRowIndex &&
+        String(item.employee) === String(req.user.id),
+    );
 
     if (!assignment) {
       return res.status(403).json({ message: 'This client data is not assigned to you' });
@@ -175,7 +192,10 @@ router.post('/meetings', authMiddleware, requireEmployee, async (req, res) => {
     }
 
     const companyName = getCellValue(columns, row, ['Company Name', 'Company Name ']);
-    const clientName = getCellValue(columns, row, ['Client Name', 'Client Name ']) || companyName || `Row ${normalizedRowIndex + 1}`;
+    const clientName =
+      getCellValue(columns, row, ['Client Name', 'Client Name ']) ||
+      companyName ||
+      `Row ${normalizedRowIndex + 1}`;
 
     const meeting = new Meeting({
       employee: req.user.id,
@@ -223,27 +243,37 @@ router.get('/admin-summary', authMiddleware, requireAdmin, async (req, res) => {
     const [employees, datasets, meetings] = await Promise.all([
       User.find({ role: 'employee' }).select('name email position imageUrl'),
       ClientDataset.find(),
-      Meeting.find().populate('employee', 'name email position').sort({ meetingDate: 1, meetingTime: 1 }),
+      Meeting.find()
+        .populate('employee', 'name email position')
+        .sort({ meetingDate: 1, meetingTime: 1 }),
     ]);
 
     const taskRows = [];
-    const employeeStats = new Map(employees.map((employee) => [String(employee._id), {
-      _id: employee._id,
-      name: employee.name,
-      email: employee.email,
-      position: employee.position,
-      imageUrl: employee.imageUrl,
-      assignedCount: 0,
-      followUpCount: 0,
-      pendingCallCount: 0,
-      statusCounts: {},
-      meetingCount: 0,
-      upcomingMeetingCount: 0,
-    }]));
+    const employeeStats = new Map(
+      employees.map((employee) => [
+        String(employee._id),
+        {
+          _id: employee._id,
+          name: employee.name,
+          email: employee.email,
+          position: employee.position,
+          imageUrl: employee.imageUrl,
+          assignedCount: 0,
+          followUpCount: 0,
+          pendingCallCount: 0,
+          statusCounts: {},
+          meetingCount: 0,
+          upcomingMeetingCount: 0,
+        },
+      ]),
+    );
 
     datasets.forEach((dataset) => {
       const datasetObject = dataset.toObject();
-      const { columns, rows } = addWorkColumnsAfterWebsite(datasetObject.columns || [], datasetObject.rows || []);
+      const { columns, rows } = addWorkColumnsAfterWebsite(
+        datasetObject.columns || [],
+        datasetObject.rows || [],
+      );
       const statusIndex = getColumnIndex(columns, ['Status']);
 
       (datasetObject.rowAssignments || []).forEach((assignment) => {
@@ -262,10 +292,11 @@ router.get('/admin-summary', authMiddleware, requireAdmin, async (req, res) => {
         if (row) {
           const rowIndex = Number(assignment.rowIndex);
           const companyName = getCellValue(columns, row, ['Company Name', 'Company Name ']);
-          const clientName = getCellValue(columns, row, ['Client Name', 'Client Name '])
-            || companyName
-            || getCellValue(columns, row, ['Account Name'])
-            || `Row ${rowIndex + 1}`;
+          const clientName =
+            getCellValue(columns, row, ['Client Name', 'Client Name ']) ||
+            companyName ||
+            getCellValue(columns, row, ['Account Name']) ||
+            `Row ${rowIndex + 1}`;
 
           taskRows.push({
             _id: `${datasetObject._id}-${rowIndex}`,
@@ -281,7 +312,13 @@ router.get('/admin-summary', authMiddleware, requireAdmin, async (req, res) => {
             clientName,
             companyName,
             city: getCellValue(columns, row, ['City', 'Billing City']),
-            phone: getCellValue(columns, row, ['Mobile 1', 'Mobile 1 ', 'Mobile', 'Phone', 'Contact Number']),
+            phone: getCellValue(columns, row, [
+              'Mobile 1',
+              'Mobile 1 ',
+              'Mobile',
+              'Phone',
+              'Contact Number',
+            ]),
             email: getCellValue(columns, row, ['Email 1', 'Email 1 ', 'Email']),
             website: getCellValue(columns, row, ['Website', 'URL']),
             status,
@@ -305,15 +342,23 @@ router.get('/admin-summary', authMiddleware, requireAdmin, async (req, res) => {
     const employeeSummaries = Array.from(employeeStats.values());
     const upcomingMeetingCount = meetings.filter((meeting) => meeting.meetingDate >= today).length;
     const overdueMeetingCount = meetings.filter((meeting) => meeting.meetingDate < today).length;
-    const totalStatusCount = (statusName) => employeeSummaries.reduce((total, employee) => (
-      total + (employee.statusCounts[statusName] || 0)
-    ), 0);
+    const totalStatusCount = (statusName) =>
+      employeeSummaries.reduce(
+        (total, employee) => total + (employee.statusCounts[statusName] || 0),
+        0,
+      );
 
     return res.json({
       employees: employeeSummaries,
       meetings,
       tasks: taskRows.sort((a, b) => {
-        const statusPriority = { 'Follow Up': 0, Pending: 1, Contacted: 2, Interested: 3, Converted: 4 };
+        const statusPriority = {
+          'Follow Up': 0,
+          Pending: 1,
+          Contacted: 2,
+          Interested: 3,
+          Converted: 4,
+        };
         const aPriority = statusPriority[a.status] ?? 5;
         const bPriority = statusPriority[b.status] ?? 5;
         if (aPriority !== bPriority) return aPriority - bPriority;
@@ -321,9 +366,15 @@ router.get('/admin-summary', authMiddleware, requireAdmin, async (req, res) => {
       }),
       totals: {
         employees: employees.length,
-        assignedData: employeeSummaries.reduce((total, employee) => total + employee.assignedCount, 0),
+        assignedData: employeeSummaries.reduce(
+          (total, employee) => total + employee.assignedCount,
+          0,
+        ),
         followUps: employeeSummaries.reduce((total, employee) => total + employee.followUpCount, 0),
-        pendingCalls: employeeSummaries.reduce((total, employee) => total + employee.pendingCallCount, 0),
+        pendingCalls: employeeSummaries.reduce(
+          (total, employee) => total + employee.pendingCallCount,
+          0,
+        ),
         contacted: totalStatusCount('Contacted'),
         interested: totalStatusCount('Interested'),
         converted: totalStatusCount('Converted'),

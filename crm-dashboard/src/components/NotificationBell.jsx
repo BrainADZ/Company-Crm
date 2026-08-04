@@ -103,11 +103,13 @@ const NotificationBell = ({ role }) => {
   }, [showDropdown]);
 
   const markReadLocally = (notificationId) => {
-    setNotifications((previous) => previous.map((notification) => (
-      notification._id === notificationId
-        ? { ...notification, isRead: true, readAt: new Date().toISOString() }
-        : notification
-    )));
+    setNotifications((previous) =>
+      previous.map((notification) =>
+        notification._id === notificationId
+          ? { ...notification, isRead: true, readAt: new Date().toISOString() }
+          : notification,
+      ),
+    );
     setUnreadCount((previous) => Math.max(previous - 1, 0));
   };
 
@@ -117,7 +119,9 @@ const NotificationBell = ({ role }) => {
   };
 
   const handleMarkAsRead = async (notificationId) => {
-    const currentNotification = notifications.find((notification) => notification._id === notificationId);
+    const currentNotification = notifications.find(
+      (notification) => notification._id === notificationId,
+    );
     if (!currentNotification || currentNotification.isRead) return;
 
     markReadLocally(notificationId);
@@ -126,7 +130,11 @@ const NotificationBell = ({ role }) => {
     if (!headers) return;
 
     try {
-      await axios.patch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {}, { headers });
+      await axios.patch(
+        `${API_BASE_URL}/api/notifications/${notificationId}/read`,
+        {},
+        { headers },
+      );
     } catch {
       fetchNotifications();
     }
@@ -136,7 +144,9 @@ const NotificationBell = ({ role }) => {
     const headers = getHeaders();
     if (!headers) return;
 
-    setNotifications((previous) => previous.map((notification) => ({ ...notification, isRead: true })));
+    setNotifications((previous) =>
+      previous.map((notification) => ({ ...notification, isRead: true })),
+    );
     setUnreadCount(0);
 
     try {
@@ -162,18 +172,34 @@ const NotificationBell = ({ role }) => {
 
   const renderNotification = (notification) => {
     const content = (
-      <div className={`flex gap-3 px-4 py-3 text-left transition hover:bg-slate-50 ${notification.isRead ? 'bg-white' : 'bg-blue-50/60'}`}>
-        <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${notificationTone[notification.type] || notificationTone.general}`}>
-          <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <div
+        className={`flex gap-3 px-4 py-3 text-left transition hover:bg-slate-50 ${notification.isRead ? 'bg-white' : 'bg-blue-50/60'}`}
+      >
+        <span
+          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${notificationTone[notification.type] || notificationTone.general}`}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4 fill-none stroke-current"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             {notificationIcon[notification.type] || notificationIcon.general}
           </svg>
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-start justify-between gap-3">
-            <span className="line-clamp-1 text-sm font-semibold text-slate-900">{notification.title}</span>
-            {!notification.isRead && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600" />}
+            <span className="line-clamp-1 text-sm font-semibold text-slate-900">
+              {notification.title}
+            </span>
+            {!notification.isRead && (
+              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600" />
+            )}
           </span>
-          <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{notification.message}</span>
+          <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+            {notification.message}
+          </span>
           <span className="mt-2 block text-[11px] font-medium text-slate-400">
             {notification.actorName} - {getRelativeTime(notification.createdAt)}
           </span>
@@ -217,7 +243,13 @@ const NotificationBell = ({ role }) => {
         onClick={handleToggleDropdown}
         className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
       >
-        <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          viewBox="0 0 24 24"
+          className="h-5 w-5 fill-none stroke-current"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-4.3 13a2 2 0 0 1-3.4 0" />
         </svg>
         {unreadCount > 0 && (
@@ -260,7 +292,9 @@ const NotificationBell = ({ role }) => {
 
           <div className="max-h-96 divide-y divide-slate-100 overflow-y-auto">
             {isLoading && notifications.length === 0 && (
-              <p className="px-4 py-8 text-center text-sm text-slate-500">Loading notifications...</p>
+              <p className="px-4 py-8 text-center text-sm text-slate-500">
+                Loading notifications...
+              </p>
             )}
 
             {!isLoading && error && (
@@ -270,12 +304,20 @@ const NotificationBell = ({ role }) => {
             {!isLoading && !error && notifications.length === 0 && (
               <div className="px-4 py-10 text-center">
                 <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5 fill-none stroke-current"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-4.3 13a2 2 0 0 1-3.4 0" />
                   </svg>
                 </span>
                 <p className="mt-3 text-sm font-semibold text-slate-700">No notifications yet</p>
-                <p className="mt-1 text-xs text-slate-500">New assignments, updates, and meetings will appear here.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  New assignments, updates, and meetings will appear here.
+                </p>
               </div>
             )}
 

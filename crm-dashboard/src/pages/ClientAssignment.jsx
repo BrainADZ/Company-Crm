@@ -3,14 +3,28 @@ import axios from 'axios';
 import Modal from 'react-modal';
 import { API_BASE_URL, getAssetUrl } from '../config/api';
 
-const avatarClasses = ['bg-blue-600', 'bg-violet-600', 'bg-rose-600', 'bg-teal-600', 'bg-amber-500', 'bg-emerald-600'];
-const fieldClass = 'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100';
+const avatarClasses = [
+  'bg-blue-600',
+  'bg-violet-600',
+  'bg-rose-600',
+  'bg-teal-600',
+  'bg-amber-500',
+  'bg-emerald-600',
+];
+const fieldClass =
+  'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100';
 
-const getInitials = (name = '') => (
-  name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'EM'
-);
+const getInitials = (name = '') =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'EM';
 
-const getAvatarClass = (name = '') => avatarClasses[(name.charCodeAt(0) || 0) % avatarClasses.length];
+const getAvatarClass = (name = '') =>
+  avatarClasses[(name.charCodeAt(0) || 0) % avatarClasses.length];
 
 const ClientAssignment = () => {
   const [employees, setEmployees] = useState([]);
@@ -83,15 +97,20 @@ const ClientAssignment = () => {
 
   const handleOpenModal = (employee) => {
     setModalEmployee(employee);
-    setModalAssignedClients(assignments.filter(
-      (assignment) => assignment.assignedTo && assignment.assignedTo._id === employee._id,
-    ));
+    setModalAssignedClients(
+      assignments.filter(
+        (assignment) => assignment.assignedTo && assignment.assignedTo._id === employee._id,
+      ),
+    );
     setModalIsOpen(true);
   };
 
   const handleReviewClick = async (client) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/clients/${client._id}/comments`, authConfig());
+      const response = await axios.get(
+        `${API_BASE_URL}/api/clients/${client._id}/comments`,
+        authConfig(),
+      );
       setComments(response.data.callLogs || []);
       setSelectedClientForReview(client);
       setReviewModalIsOpen(true);
@@ -100,14 +119,16 @@ const ClientAssignment = () => {
     }
   };
 
-  const filteredClients = clients.filter((client) => (
-    client.name.toLowerCase().includes(searchTerm.toLowerCase())
-      && (!client.assignedTo || client.assignedTo._id !== selectedEmployee)
-  ));
-
-  const employeeClientCount = (employeeId) => (
-    assignments.filter((assignment) => assignment.assignedTo && assignment.assignedTo._id === employeeId).length
+  const filteredClients = clients.filter(
+    (client) =>
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      (!client.assignedTo || client.assignedTo._id !== selectedEmployee),
   );
+
+  const employeeClientCount = (employeeId) =>
+    assignments.filter(
+      (assignment) => assignment.assignedTo && assignment.assignedTo._id === employeeId,
+    ).length;
 
   const closeReviewModal = () => {
     setReviewModalIsOpen(false);
@@ -120,27 +141,39 @@ const ClientAssignment = () => {
       <section>
         <p className="text-xs font-semibold text-blue-600">Work allocation</p>
         <h1 className="mt-1.5 text-2xl font-semibold text-slate-950">Assign clients</h1>
-        <p className="mt-1.5 text-sm leading-6 text-slate-500">Distribute client accounts and review team activity.</p>
+        <p className="mt-1.5 text-sm leading-6 text-slate-500">
+          Distribute client accounts and review team activity.
+        </p>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="border-b border-slate-100 pb-4">
             <h2 className="text-base font-semibold text-slate-900">Assignment setup</h2>
-            <p className="mt-1 text-sm text-slate-500">Choose an employee and one or more clients.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Choose an employee and one or more clients.
+            </p>
           </div>
           <div className="mt-5 space-y-4">
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-slate-600">Employee</span>
-              <select className={fieldClass} value={selectedEmployee} onChange={(event) => setSelectedEmployee(event.target.value)}>
+              <select
+                className={fieldClass}
+                value={selectedEmployee}
+                onChange={(event) => setSelectedEmployee(event.target.value)}
+              >
                 <option value="">Select an employee...</option>
                 {employees.map((employee) => (
-                  <option key={employee._id} value={employee._id}>{employee.name}</option>
+                  <option key={employee._id} value={employee._id}>
+                    {employee.name}
+                  </option>
                 ))}
               </select>
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-slate-600">Search clients</span>
+              <span className="mb-1.5 block text-xs font-medium text-slate-600">
+                Search clients
+              </span>
               <input
                 type="search"
                 className={fieldClass}
@@ -155,7 +188,10 @@ const ClientAssignment = () => {
               disabled={!selectedEmployee || selectedClients.length === 0}
               className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              Assign {selectedClients.length > 0 ? `${selectedClients.length} selected client${selectedClients.length > 1 ? 's' : ''}` : 'clients'}
+              Assign{' '}
+              {selectedClients.length > 0
+                ? `${selectedClients.length} selected client${selectedClients.length > 1 ? 's' : ''}`
+                : 'clients'}
             </button>
           </div>
         </article>
@@ -164,7 +200,9 @@ const ClientAssignment = () => {
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Available clients</h2>
-              <p className="mt-1 text-sm text-slate-500">Hold Ctrl or Cmd to select multiple records.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Hold Ctrl or Cmd to select multiple records.
+              </p>
             </div>
             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
               {filteredClients.length} available
@@ -174,10 +212,14 @@ const ClientAssignment = () => {
             multiple
             className="mt-5 min-h-56 w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             value={selectedClients}
-            onChange={(event) => setSelectedClients(Array.from(event.target.selectedOptions, (option) => option.value))}
+            onChange={(event) =>
+              setSelectedClients(Array.from(event.target.selectedOptions, (option) => option.value))
+            }
           >
             {filteredClients.map((client) => (
-              <option key={client._id} value={client._id} className="rounded-lg px-3 py-2">{client.name}</option>
+              <option key={client._id} value={client._id} className="rounded-lg px-3 py-2">
+                {client.name}
+              </option>
             ))}
           </select>
           {filteredClients.length === 0 && (
@@ -198,13 +240,20 @@ const ClientAssignment = () => {
           {employees.map((employee) => {
             const clientCount = employeeClientCount(employee._id);
             return (
-              <article key={employee._id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white ${getAvatarClass(employee.name)}`}>
+              <article
+                key={employee._id}
+                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <span
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white ${getAvatarClass(employee.name)}`}
+                >
                   {getInitials(employee.name)}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{employee.name}</p>
-                  <p className="mt-1 text-sm text-slate-500">{clientCount} assigned client{clientCount !== 1 ? 's' : ''}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {clientCount} assigned client{clientCount !== 1 ? 's' : ''}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -229,28 +278,49 @@ const ClientAssignment = () => {
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             {modalEmployee && (
-              <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-xs font-bold text-white ${getAvatarClass(modalEmployee.name)}`}>
+              <span
+                className={`flex h-11 w-11 items-center justify-center rounded-xl text-xs font-bold text-white ${getAvatarClass(modalEmployee.name)}`}
+              >
                 {getInitials(modalEmployee.name)}
               </span>
             )}
             <div>
               <h2 className="font-semibold text-slate-950">{modalEmployee?.name}</h2>
-              <p className="mt-1 text-xs text-slate-500">{modalAssignedClients.length} assigned clients</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {modalAssignedClients.length} assigned clients
+              </p>
             </div>
           </div>
-          <button type="button" onClick={() => setModalIsOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50">X</button>
+          <button
+            type="button"
+            onClick={() => setModalIsOpen(false)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50"
+          >
+            X
+          </button>
         </div>
 
         <div className="mt-6 space-y-2">
           {modalAssignedClients.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">No clients assigned yet.</p>
+            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
+              No clients assigned yet.
+            </p>
           ) : (
             modalAssignedClients.map((client) => (
-              <div key={client._id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">
+              <div
+                key={client._id}
+                className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center"
+              >
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
-                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{client.name}</p>
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">
+                  {client.name}
+                </p>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => handleUnassign(client._id)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100">
+                  <button
+                    type="button"
+                    onClick={() => handleUnassign(client._id)}
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+                  >
                     Unassign
                   </button>
                   <button
@@ -280,18 +350,35 @@ const ClientAssignment = () => {
             <h2 className="font-semibold text-slate-950">Call logs</h2>
             <p className="mt-1 text-xs text-slate-500">{selectedClientForReview?.name}</p>
           </div>
-          <button type="button" onClick={closeReviewModal} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50">X</button>
+          <button
+            type="button"
+            onClick={closeReviewModal}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50"
+          >
+            X
+          </button>
         </div>
         <div className="mt-6 space-y-3">
           {comments.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">No call logs recorded yet.</p>
+            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
+              No call logs recorded yet.
+            </p>
           ) : (
             comments.map((log, index) => (
-              <article key={`${log.comment}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <article
+                key={`${log.comment}-${index}`}
+                className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+              >
                 <p className="text-sm leading-6 text-slate-700">{log.comment}</p>
-                <span className="mt-3 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">{log.callStatus}</span>
+                <span className="mt-3 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                  {log.callStatus}
+                </span>
                 {log.screenshotUrl && (
-                  <img src={getAssetUrl(log.screenshotUrl)} alt="Call log screenshot" className="mt-3 w-full rounded-lg border border-slate-200" />
+                  <img
+                    src={getAssetUrl(log.screenshotUrl)}
+                    alt="Call log screenshot"
+                    className="mt-3 w-full rounded-lg border border-slate-200"
+                  />
                 )}
               </article>
             ))

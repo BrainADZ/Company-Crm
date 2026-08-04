@@ -16,7 +16,10 @@ const requireSuperAdmin = (req, res) => {
 
 const normalizeList = (value) => {
   if (Array.isArray(value)) return value.map(String);
-  return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 };
 
 const normalizeCommunities = (value) => {
@@ -36,7 +39,10 @@ const publicEmployee = (employee) => ({
   email: employee.email,
   role: employee.role,
   crmRole: employee.crmRole || employee.role,
-  roleKey: employee.crmRole && employee.crmRole !== 'employee' ? employee.crmRole : (employee.roleKey || employee.role),
+  roleKey:
+    employee.crmRole && employee.crmRole !== 'employee'
+      ? employee.crmRole
+      : employee.roleKey || employee.role,
   department: employee.officeModule || employee.department || '',
   officeModule: employee.officeModule || employee.department || '',
   team: employee.team || '',
@@ -76,7 +82,7 @@ const upload = multer({
       cb(new Error('Only images are allowed (jpeg, jpg, png)'));
     }
   },
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB file size limit
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
 // Get all employees
@@ -84,7 +90,9 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     if (requireSuperAdmin(req, res)) return;
 
-    const employees = await User.find({ role: 'employee', isDeleted: { $ne: true } }).select('-password -securityAnswerHash').sort({ createdAt: -1 });
+    const employees = await User.find({ role: 'employee', isDeleted: { $ne: true } })
+      .select('-password -securityAnswerHash')
+      .sort({ createdAt: -1 });
     res.json(employees.map(publicEmployee));
   } catch (err) {
     console.error(err.message);
@@ -94,7 +102,18 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // Register new employee
 router.post('/register', authMiddleware, upload.single('image'), async (req, res) => {
-  const { name, email, password, phone, address, position, department, officeModule, team, crmRole, permissions, communities } = req.body;
+  const {
+    name,
+    email,
+    password,
+    phone,
+    address,
+    position,
+    team,
+    crmRole,
+    permissions,
+    communities,
+  } = req.body;
 
   try {
     if (requireSuperAdmin(req, res)) return;
@@ -104,11 +123,24 @@ router.post('/register', authMiddleware, upload.single('image'), async (req, res
     }
 
     const selectedCommunities = normalizeCommunities(communities);
-    if (!selectedCommunities.length) return res.status(400).json({ message: 'Select at least one community' });
-    if (!team || !(await OfficeStructure.exists({ type: 'team', name: team.trim() }))) return res.status(400).json({ message: 'Select a valid team' });
-    if (!position || !(await OfficeStructure.exists({ type: 'designation', name: position.trim(), teamName: team.trim() }))) return res.status(400).json({ message: 'Select a valid designation for this team' });
+    if (!selectedCommunities.length)
+      return res.status(400).json({ message: 'Select at least one community' });
+    if (!team || !(await OfficeStructure.exists({ type: 'team', name: team.trim() })))
+      return res.status(400).json({ message: 'Select a valid team' });
+    if (
+      !position ||
+      !(await OfficeStructure.exists({
+        type: 'designation',
+        name: position.trim(),
+        teamName: team.trim(),
+      }))
+    )
+      return res.status(400).json({ message: 'Select a valid designation for this team' });
     const normalizedPhone = normalizeIndianPhone(phone);
-    if (!normalizedPhone) return res.status(400).json({ message: 'Phone number must contain exactly 10 digits after +91' });
+    if (!normalizedPhone)
+      return res
+        .status(400)
+        .json({ message: 'Phone number must contain exactly 10 digits after +91' });
 
     // Validate input
     if (!name || !email || !password || !phone || !address || !position) {
@@ -143,7 +175,12 @@ router.post('/register', authMiddleware, upload.single('image'), async (req, res
       department: '',
       officeModule: '',
       team: team?.trim() || '',
-      permissions: Array.isArray(permissions) ? permissions : String(permissions || '').split(',').map((item) => item.trim()).filter(Boolean),
+      permissions: Array.isArray(permissions)
+        ? permissions
+        : String(permissions || '')
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
       communities: selectedCommunities,
       primaryCommunity: selectedCommunities[0],
       accountStatus: 'active',
@@ -155,7 +192,9 @@ router.post('/register', authMiddleware, upload.single('image'), async (req, res
     });
 
     await newEmployee.save();
-    res.status(201).json({ message: 'Employee registered successfully', employee: publicEmployee(newEmployee) });
+    res
+      .status(201)
+      .json({ message: 'Employee registered successfully', employee: publicEmployee(newEmployee) });
   } catch (err) {
     console.error('Error in employee registration:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -191,7 +230,18 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 // Update an employee by ID
 router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
-  const { name, email, password, phone, address, position, department, officeModule, team, crmRole, permissions, communities } = req.body;
+  const {
+    name,
+    email,
+    password,
+    phone,
+    address,
+    position,
+    team,
+    crmRole,
+    permissions,
+    communities,
+  } = req.body;
 
   try {
     if (requireSuperAdmin(req, res)) return;
@@ -199,7 +249,6 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
     if (crmRole === 'super_admin' || (crmRole && !CRM_ROLE_KEYS.includes(crmRole))) {
       return res.status(400).json({ message: 'Invalid employee CRM role' });
     }
-
 
     // Find the employee by ID
     const employee = await User.findById(req.params.id);
@@ -230,30 +279,49 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
     employee.name = name?.trim() || employee.name;
     if (phone) {
       const normalizedPhone = normalizeIndianPhone(phone);
-      if (!normalizedPhone) return res.status(400).json({ message: 'Phone number must contain exactly 10 digits after +91' });
+      if (!normalizedPhone)
+        return res
+          .status(400)
+          .json({ message: 'Phone number must contain exactly 10 digits after +91' });
       employee.phone = normalizedPhone;
     }
     employee.address = address?.trim() || employee.address;
     employee.position = position?.trim() || employee.position;
     const nextTeam = team?.trim() || employee.team;
     const nextDesignation = position?.trim() || employee.position;
-    if (!(await OfficeStructure.exists({ type: 'team', name: nextTeam }))) return res.status(400).json({ message: 'Select a valid team' });
-    if (!(await OfficeStructure.exists({ type: 'designation', name: nextDesignation, teamName: nextTeam }))) return res.status(400).json({ message: 'Select a valid designation for this team' });
+    if (!(await OfficeStructure.exists({ type: 'team', name: nextTeam })))
+      return res.status(400).json({ message: 'Select a valid team' });
+    if (
+      !(await OfficeStructure.exists({
+        type: 'designation',
+        name: nextDesignation,
+        teamName: nextTeam,
+      }))
+    )
+      return res.status(400).json({ message: 'Select a valid designation for this team' });
     employee.department = '';
     employee.officeModule = '';
     employee.team = nextTeam;
     employee.position = nextDesignation;
-    if (crmRole) { employee.crmRole = crmRole; employee.roleKey = crmRole; }
+    if (crmRole) {
+      employee.crmRole = crmRole;
+      employee.roleKey = crmRole;
+    }
     if (permissions !== undefined) {
       employee.permissions = Array.isArray(permissions)
         ? permissions
-        : String(permissions || '').split(',').map((item) => item.trim()).filter(Boolean);
+        : String(permissions || '')
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
     }
     if (communities !== undefined) {
       const selectedCommunities = normalizeCommunities(communities);
-      if (!selectedCommunities.length) return res.status(400).json({ message: 'Select at least one community' });
+      if (!selectedCommunities.length)
+        return res.status(400).json({ message: 'Select at least one community' });
       employee.communities = selectedCommunities;
-      if (!selectedCommunities.includes(employee.primaryCommunity)) employee.primaryCommunity = selectedCommunities[0];
+      if (!selectedCommunities.includes(employee.primaryCommunity))
+        employee.primaryCommunity = selectedCommunities[0];
     }
     employee.sessionVersion = (employee.sessionVersion || 0) + 1;
 
@@ -273,7 +341,9 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
     }
 
     await employee.save();
-    res.status(200).json({ message: 'Employee updated successfully', employee: publicEmployee(employee) });
+    res
+      .status(200)
+      .json({ message: 'Employee updated successfully', employee: publicEmployee(employee) });
   } catch (err) {
     console.error('Error updating employee:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
