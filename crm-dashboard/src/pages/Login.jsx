@@ -158,10 +158,10 @@ const Login = () => {
               </p>
               <div className="mt-2 space-y-1 text-sm text-slate-700">
                 <p>
-                  <span className="font-semibold">Email:</span> admin@brainadz.com
+                  <span className="font-semibold">Email:</span> demo@brainadzlive.in
                 </p>
                 <p>
-                  <span className="font-semibold">Password:</span> admin123456
+                  <span className="font-semibold">Password:</span> demo12345
                 </p>
               </div>
             </div>
