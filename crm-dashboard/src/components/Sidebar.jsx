@@ -11,7 +11,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Building2,
   FileText,
   FolderKanban,
   FolderOpen,
@@ -157,16 +156,16 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       {/* Logo Area */}
       <div className="flex h-16 items-center justify-between border-b border-white/10 px-3">
         <Link to="/dashboard" className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#123985] shadow-sm">
-            <Building2 size={21} strokeWidth={1.8} />
-          </span>
-
-          {!collapsed && (
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold tracking-wide">
-                Company CRM
+          {collapsed ? (
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+              <img src="/icon.png" alt="BrainADZ" className="h-full w-full object-contain" />
+            </span>
+          ) : (
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="flex h-10 w-32 items-center rounded-lg bg-white px-2 shadow-sm">
+                <img src="/logo.png" alt="BrainADZ" className="h-auto w-full object-contain" />
               </span>
-              <span className="mt-0.5 block truncate text-xs text-blue-100/75">
+              <span className="block truncate text-[10px] text-blue-100/75">
                 Super Admin Workspace
               </span>
             </span>

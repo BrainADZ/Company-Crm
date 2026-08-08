@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Building2, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react';
 import PasswordInput from '../components/PasswordInput';
 import { API_BASE_URL } from '../config/api';
 
@@ -51,14 +51,11 @@ const Login = () => {
         <div className="absolute -bottom-52 -right-40 h-[38rem] w-[38rem] rounded-full border-[8rem] border-blue-300/[0.06]" />
         <div className="absolute left-1/2 top-1/2 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[3rem] bg-blue-500/10" />
 
-        <div className="relative flex items-center gap-3 text-white">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-[#123985] shadow-lg">
-            <Building2 size={22} />
+        <div className="relative text-white">
+          <span className="flex h-20 w-64 items-center rounded-2xl bg-white px-5 shadow-lg">
+            <img src="/logo.png" alt="BrainADZ" className="h-auto w-full object-contain" />
           </span>
-          <div>
-            <p className="text-base font-bold">BrainAdz CRM</p>
-            <p className="text-xs font-medium text-blue-200">Company Operations Platform</p>
-          </div>
+          <p className="mt-2 text-xs font-medium text-blue-200">Company Operations Platform</p>
         </div>
 
         <div className="relative max-w-xl">
@@ -92,14 +89,9 @@ const Login = () => {
 
       <section className="flex min-h-screen items-center justify-center bg-slate-50 px-5 py-10 sm:px-8">
         <div className="w-full max-w-[27rem]">
-          <div className="mb-9 flex items-center gap-3 lg:hidden">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white">
-              <Building2 size={22} />
-            </span>
-            <div>
-              <p className="font-bold text-slate-950">BrainAdz CRM</p>
-              <p className="text-xs text-slate-500">Company Operations Platform</p>
-            </div>
+          <div className="mb-9 lg:hidden">
+            <img src="/logo.png" alt="BrainADZ" className="h-auto w-52 object-contain" />
+            <p className="mt-1 text-xs text-slate-500">Company Operations Platform</p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_20px_55px_-30px_rgba(15,23,42,0.35)] sm:p-8">
