@@ -256,6 +256,13 @@ const toDateInput = (date) => date.toISOString().slice(0, 10);
 const getContextIndex = (employeeIndex) =>
   employeeIndex < DATASET_SPECS.length ? employeeIndex : employeeIndex % DATASET_SPECS.length;
 
+const activateRequiredSalesRoles = async () => {
+  await RolePermission.updateMany(
+    { roleKey: { $in: ['sales_manager', 'sales_executive'] } },
+    { $set: { active: true, legacy: false } },
+  );
+};
+
 const requireSeedDependencies = async () => {
   const [salesDepartment, businessUnits, teams, roles] = await Promise.all([
     Department.findOne({ slug: 'sales', status: 'active' }),
@@ -606,6 +613,7 @@ const run = async () => {
 
   await mongoose.connect(mongoUri);
   await ensureAccessFoundation();
+  await activateRequiredSalesRoles();
 
   const dependencies = await requireSeedDependencies();
   const seedActor = await User.findOne({ roleKey: 'super_admin', isDeleted: { $ne: true } });
