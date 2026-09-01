@@ -65,6 +65,20 @@ const getTodayDateKey = () => {
   return localDate.toISOString().slice(0, 10);
 };
 
+const formatFollowUpDate = (value) => {
+  const [year, month, day] = String(value || '')
+    .split('-')
+    .map(Number);
+
+  if (!year || !month || !day) return value || '';
+
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(year, month - 1, day));
+};
+
 const normalizeColumnName = (column) =>
   String(column || '')
     .trim()
@@ -100,6 +114,42 @@ const isEmailColumn = (column) => {
 
 const isOtherColumn = (column) =>
   ['other', 'others'].includes(normalizeContactHeader(column));
+
+const getCompactColumnWidth = (column) => {
+  const normalizedColumn = normalizeColumnName(column);
+
+  if (isPhoneColumn(column) || isEmailColumn(column)) {
+    return 'w-40 min-w-40 max-w-40';
+  }
+
+  if (normalizedColumn === 'employee') return 'w-40 min-w-40 max-w-40';
+
+  if (
+    normalizedColumn.includes('company') ||
+    normalizedColumn.includes('account') ||
+    normalizedColumn === 'full name' ||
+    normalizedColumn === 'client name'
+  ) {
+    return 'w-44 min-w-44 max-w-44';
+  }
+
+  if (
+    normalizedColumn.includes('requirement') ||
+    normalizedColumn.includes('designation') ||
+    normalizedColumn.includes('department')
+  ) {
+    return 'w-48 min-w-48 max-w-48';
+  }
+
+  if (
+    normalizedColumn.includes('website') ||
+    normalizedColumn.includes('address')
+  ) {
+    return 'w-40 min-w-40 max-w-40';
+  }
+
+  return 'w-32 min-w-32 max-w-32';
+};
 
 const splitContactValue = (value) =>
   String(value || '')
@@ -175,18 +225,21 @@ const ContactCell = ({ values, type }) => {
 
   if (values.length === 1) {
     return (
-      <span className="whitespace-nowrap text-sm font-medium text-slate-700">
+      <span
+        title={values[0]}
+        className="block w-36 truncate whitespace-nowrap text-xs font-medium text-slate-700"
+      >
         {values[0]}
       </span>
     );
   }
 
   return (
-    <div className="min-w-44">
+    <div className="w-36 min-w-36">
       <select
         defaultValue={values[0]}
         aria-label={`${type} options`}
-        className="h-9 w-full cursor-pointer rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        className="h-8 w-full cursor-pointer rounded-lg border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       >
         {values.map((value, index) => (
           <option
@@ -1773,17 +1826,17 @@ const ClientDatasetDetail = () => {
           )}
         </div>
 
-        <div className="overflow-auto">
-          <table className="min-w-full border-collapse text-left text-sm">
+        <div className="client-table-scrollbar overflow-x-auto overscroll-x-contain border-t border-slate-200 bg-slate-50/70 pb-1">
+          <table className="min-w-max border-collapse bg-white text-left text-xs">
             <thead>
               <tr className="bg-slate-100">
                 {isAdmin && (
-                  <th className="whitespace-nowrap border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">
+                  <th className="w-16 min-w-16 whitespace-nowrap border border-slate-300 px-2 py-2 text-center font-semibold text-slate-800">
                     Select
                   </th>
                 )}
 
-                <th className="whitespace-nowrap border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">
+                <th className="w-14 min-w-14 whitespace-nowrap border border-slate-300 px-2 py-2 text-center font-semibold text-slate-800">
                   S.No.
                 </th>
 
@@ -1812,7 +1865,7 @@ const ClientDatasetDetail = () => {
                     return (
                       <th
                         key={`${column}-${columnIndex}`}
-                        className="whitespace-nowrap border border-slate-300 px-3 py-2 font-semibold text-slate-800"
+                        className={`${getCompactColumnWidth(column)} whitespace-nowrap border border-slate-300 px-2.5 py-2 font-semibold text-slate-800`}
                       >
                         {label}
                       </th>
@@ -1820,11 +1873,15 @@ const ClientDatasetDetail = () => {
                   },
                 )}
 
-                <th className="whitespace-nowrap border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">
+                <th className="w-36 min-w-36 whitespace-nowrap border border-slate-300 px-2.5 py-2 text-center font-semibold text-slate-800">
+                  Follow-up Date
+                </th>
+
+                <th className="w-48 min-w-48 whitespace-nowrap border border-slate-300 px-2.5 py-2 text-center font-semibold text-slate-800">
                   Meeting
                 </th>
 
-                <th className="whitespace-nowrap border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">
+                <th className="w-16 min-w-16 whitespace-nowrap border border-slate-300 px-2 py-2 text-center font-semibold text-slate-800">
                   Actions
                 </th>
               </tr>
@@ -1838,6 +1895,9 @@ const ClientDatasetDetail = () => {
                 ) => {
                   const rowStatus =
                     row[statusIndex] || '';
+
+                  const rowFollowUpDate =
+                    getFollowUpDate(rowIndex);
 
                   const isSchedulingMeeting =
                     Boolean(
@@ -1923,7 +1983,7 @@ const ClientDatasetDetail = () => {
                       className={`${rowClass} transition hover:brightness-[0.99]`}
                     >
                       {isAdmin && (
-                        <td className="border border-slate-300 px-3 py-2 text-center">
+                        <td className="w-16 border border-slate-300 px-2 py-2 text-center">
                           <input
                             type="checkbox"
                             checked={selectedRows.includes(
@@ -1939,7 +1999,7 @@ const ClientDatasetDetail = () => {
                         </td>
                       )}
 
-                      <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-center text-xs font-semibold text-slate-500">
+                      <td className="w-14 whitespace-nowrap border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold text-slate-500">
                         {getOriginalRowIndex(
                           rowIndex,
                         ) + 1}
@@ -1964,7 +2024,7 @@ const ClientDatasetDetail = () => {
                             return (
                               <td
                                 key={`${rowIndex}-mobile`}
-                                className="border border-slate-300 px-3 py-2"
+                                className="w-40 min-w-40 max-w-40 border border-slate-300 px-2.5 py-2"
                               >
                                 <ContactCell
                                   values={getGroupedContactValues(
@@ -1984,7 +2044,7 @@ const ClientDatasetDetail = () => {
                             return (
                               <td
                                 key={`${rowIndex}-email`}
-                                className="border border-slate-300 px-3 py-2"
+                                className="w-40 min-w-40 max-w-40 border border-slate-300 px-2.5 py-2"
                               >
                                 <ContactCell
                                   values={getGroupedContactValues(
@@ -2031,10 +2091,10 @@ const ClientDatasetDetail = () => {
                             return (
                               <td
                                 key={`${rowIndex}-${column}-${columnIndex}`}
-                                className="border border-slate-300 px-3 py-2"
+                                className={`${getCompactColumnWidth(column)} border border-slate-300 px-2.5 py-2`}
                               >
                                 {employeeNames.length ? (
-                                  <div className="flex min-w-44 flex-wrap gap-1.5">
+                                  <div className="flex max-w-40 flex-wrap gap-1">
                                     {employeeNames.map(
                                       (
                                         employeeName,
@@ -2043,7 +2103,8 @@ const ClientDatasetDetail = () => {
                                           key={
                                             employeeName
                                           }
-                                          className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
+                                          title={employeeName}
+                                          className="max-w-36 truncate rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"
                                         >
                                           {
                                             employeeName
@@ -2064,15 +2125,46 @@ const ClientDatasetDetail = () => {
                           return (
                             <td
                               key={`${rowIndex}-${column}-${columnIndex}`}
-                              className="whitespace-nowrap border border-slate-300 px-3 py-2 text-slate-700"
+                              className={`${getCompactColumnWidth(column)} border border-slate-300 px-2.5 py-2 text-slate-700`}
                             >
-                              {row[columnIndex] || ''}
+                              <span
+                                title={String(row[columnIndex] || '')}
+                                className="block truncate whitespace-nowrap"
+                              >
+                                {row[columnIndex] || '—'}
+                              </span>
                             </td>
                           );
                         },
                       )}
 
-                      <td className="min-w-56 border border-slate-300 px-3 py-2">
+                      <td className="w-36 min-w-36 border border-slate-300 px-2.5 py-2 text-center">
+                        {rowStatus === 'Follow Up' ? (
+                          rowFollowUpDate ? (
+                            <span
+                              title={rowFollowUpDate}
+                              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] font-bold ${
+                                rowFollowUpDate < todayDateKey
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                  : rowFollowUpDate === todayDateKey
+                                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                    : 'border-violet-200 bg-violet-50 text-violet-700'
+                              }`}
+                            >
+                              <CalendarIcon />
+                              {formatFollowUpDate(rowFollowUpDate)}
+                            </span>
+                          ) : (
+                            <span className="whitespace-nowrap text-[11px] font-semibold text-amber-700">
+                              Date not set
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+
+                      <td className="w-48 min-w-48 max-w-48 border border-slate-300 px-2.5 py-2">
                         {primaryMeeting ? (
                           <div className="space-y-1.5">
                             <div className="flex items-center gap-2">
@@ -2177,7 +2269,7 @@ const ClientDatasetDetail = () => {
                         )}
                       </td>
 
-                      <td className="border border-slate-300 px-3 py-2 text-center">
+                      <td className="w-16 border border-slate-300 px-2 py-2 text-center">
                         <button
                           type="button"
                           onClick={() =>
@@ -2202,7 +2294,7 @@ const ClientDatasetDetail = () => {
                   <td
                     colSpan={
                       displayColumnIndexes.length +
-                      3 +
+                      4 +
                       (isAdmin ? 1 : 0)
                     }
                     className="border border-slate-300 px-3 py-10 text-center text-slate-500"
