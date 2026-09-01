@@ -227,7 +227,11 @@ const ContactCell = ({ values, type }) => {
     return (
       <span
         title={values[0]}
-        className="block w-36 truncate whitespace-nowrap text-xs font-medium text-slate-700"
+        className={`block w-36 text-xs font-medium leading-4 text-slate-700 ${
+          type === 'Email'
+            ? 'line-clamp-2 break-all'
+            : 'whitespace-nowrap'
+        }`}
       >
         {values[0]}
       </span>
@@ -2129,7 +2133,11 @@ const ClientDatasetDetail = () => {
                             >
                               <span
                                 title={String(row[columnIndex] || '')}
-                                className="block truncate whitespace-nowrap"
+                                className={`block line-clamp-2 leading-4 ${
+                                  normalizedColumn.includes('website')
+                                    ? 'break-all'
+                                    : 'break-words'
+                                }`}
                               >
                                 {row[columnIndex] || '—'}
                               </span>
