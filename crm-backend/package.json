@@ -6,6 +6,7 @@
     "start": "node index.js",
     "dev": "node index.js",
     "seed:admin": "node scripts/addAdminUser.js",
+    "seed:dummy": "node scripts/seedDummyData.js",
     "migrate:rbac": "node scripts/migrateRbac.js",
     "migrate:organization-access": "node scripts/migrateOrganizationAccess.js",
     "setup:quotations": "node scripts/ensureQuotationPermissions.js"
