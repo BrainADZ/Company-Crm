@@ -20,6 +20,15 @@ const CLIENT_STATUS_OPTIONS = [
   'Not Reachable',
 ];
 
+const CALL_OUTCOMES = [
+  'Connected',
+  'No Answer',
+  'Busy',
+  'Switched Off',
+  'Wrong Number',
+  'Callback Requested',
+];
+
 const STATUS_SELECT_STYLES = {
   '': 'border-slate-300 bg-slate-50 text-slate-500',
   Pending: 'border-amber-300 bg-amber-100 text-amber-800',
@@ -89,6 +98,15 @@ const getColumnIndex = (columns, columnName) =>
     (column) =>
       normalizeColumnName(column) === columnName.toLowerCase(),
   );
+
+const getFirstCellValue = (columns, row, aliases) => {
+  const normalizedAliases = aliases.map((alias) => alias.toLowerCase());
+  const index = columns.findIndex((column) =>
+    normalizedAliases.includes(normalizeColumnName(column)),
+  );
+
+  return index === -1 ? '' : String(row[index] || '').trim();
+};
 
 const normalizeContactHeader = (column) =>
   normalizeColumnName(column)
@@ -214,7 +232,10 @@ const addWorkColumnsAfterWebsite = (columns = [], rows = []) => {
   };
 };
 
-const ContactCell = ({ values, type }) => {
+const ContactCell = ({ values, type, onCall, disabled = false }) => {
+  const [selectedValue, setSelectedValue] = useState(values[0] || '');
+  const canCall = type === 'Mobile' && Boolean(onCall);
+
   if (!values.length) {
     return (
       <span className="text-xs font-medium text-slate-400">
@@ -225,23 +246,38 @@ const ContactCell = ({ values, type }) => {
 
   if (values.length === 1) {
     return (
-      <span
-        title={values[0]}
-        className={`block w-36 text-xs font-medium leading-4 text-slate-700 ${
-          type === 'Email'
-            ? 'line-clamp-2 break-all'
-            : 'whitespace-nowrap'
-        }`}
-      >
-        {values[0]}
-      </span>
+      <div className="flex w-36 items-center gap-1.5">
+        <span
+          title={values[0]}
+          className={`min-w-0 flex-1 text-xs font-medium leading-4 text-slate-700 ${
+            type === 'Email'
+              ? 'line-clamp-2 break-all'
+              : 'whitespace-nowrap'
+          }`}
+        >
+          {values[0]}
+        </span>
+
+        {canCall && (
+          <button
+            type="button"
+            title={`Call ${values[0]}`}
+            onClick={() => onCall(values[0])}
+            disabled={disabled}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-wait disabled:bg-slate-300"
+          >
+            <PhoneIcon />
+          </button>
+        )}
+      </div>
     );
   }
 
   return (
     <div className="w-36 min-w-36">
       <select
-        defaultValue={values[0]}
+        value={selectedValue}
+        onChange={(event) => setSelectedValue(event.target.value)}
         aria-label={`${type} options`}
         className="h-8 w-full cursor-pointer rounded-lg border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       >
@@ -254,6 +290,17 @@ const ContactCell = ({ values, type }) => {
           </option>
         ))}
       </select>
+
+      {canCall && (
+        <button
+          type="button"
+          onClick={() => onCall(selectedValue || values[0])}
+          disabled={disabled}
+          className="mt-1 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:bg-slate-300"
+        >
+          <PhoneIcon /> Call selected
+        </button>
+      )}
 
       <p className="mt-1 text-[10px] font-semibold text-slate-400">
         {values.length} options
@@ -272,6 +319,94 @@ const MessageIcon = () => (
     <path d="M8 9h8" />
     <path d="M8 13h5" />
   </svg>
+);
+
+const PhoneIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    className="h-4 w-4 fill-none stroke-current"
+    strokeWidth="2"
+  >
+    <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z" />
+  </svg>
+);
+
+const formatCallDuration = (seconds = 0) => {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = Math.floor(safeSeconds % 60);
+  return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
+const CallHistoryEntry = ({
+  call,
+  recordingAudioUrl,
+  isRecordingLoading,
+  onLoadRecording,
+}) => (
+  <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
+            <PhoneIcon /> {call.outcome || (call.status === 'Failed' ? 'Call failed' : 'Call initiated')}
+          </p>
+          {call.recordingAvailable ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+              Recording ready
+            </span>
+          ) : call.recordingStatus === 'Pending' ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+              Recording processing
+            </span>
+          ) : (
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+              No audio recording
+            </span>
+          )}
+        </div>
+        <p className="mt-1 break-words text-xs text-slate-600">
+          {call.notes || 'No notes added'}
+        </p>
+        <p className="mt-1 text-[11px] font-semibold text-blue-700">
+          By {call.createdBy?.name || call.owner || 'CRM user'}
+        </p>
+      </div>
+      <div className="shrink-0 text-right text-[11px] font-semibold text-slate-500">
+        <p>{formatDate(call.startedAt || call.createdAt)}</p>
+        <p className="mt-1 font-mono">{formatCallDuration(call.durationSeconds)}</p>
+      </div>
+    </div>
+
+    {call.recordingAvailable && !recordingAudioUrl && (
+      <button
+        type="button"
+        onClick={() => onLoadRecording(call)}
+        disabled={isRecordingLoading}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+      >
+        <PhoneIcon /> {isRecordingLoading ? 'Loading recording...' : 'Play call recording'}
+      </button>
+    )}
+
+    {recordingAudioUrl && (
+      <audio className="mt-3 h-9 w-full" controls preload="metadata" src={recordingAudioUrl}>
+        <track kind="captions" />
+      </audio>
+    )}
+
+    {!call.recordingAvailable && call.recordingStatus === 'Pending' && (
+      <p className="mt-3 text-[11px] font-semibold text-amber-700">
+        Recording is processing and will appear here after Exotel completes the call.
+      </p>
+    )}
+
+    {call.providerMode !== 'cloud' && !call.recordingAvailable && (
+      <p className="mt-3 text-[11px] font-semibold text-slate-500">
+        Device-dialer call — audio was not recorded by CRM.
+      </p>
+    )}
+  </article>
 );
 
 const CloseIcon = () => (
@@ -381,6 +516,33 @@ const ClientDatasetDetail = () => {
   const [actionMessage, setActionMessage] = useState('');
   const [actionModal, setActionModal] = useState(null);
   const [actionSaved, setActionSaved] = useState(false);
+
+  const [callModal, setCallModal] = useState(null);
+  const [callHistory, setCallHistory] = useState([]);
+  const [callOutcome, setCallOutcome] = useState('');
+  const [callNotes, setCallNotes] = useState('');
+  const [callElapsedSeconds, setCallElapsedSeconds] = useState(0);
+  const [callError, setCallError] = useState('');
+  const [isStartingCall, setIsStartingCall] = useState(false);
+  const [isCompletingCall, setIsCompletingCall] = useState(false);
+  const [recordingAudioUrls, setRecordingAudioUrls] = useState({});
+  const [loadingRecordings, setLoadingRecordings] = useState({});
+  const [callConfiguration, setCallConfiguration] = useState(null);
+
+  useEffect(() => {
+    if (!callModal?.call?.startedAt || callModal.call.status !== 'Initiated') return undefined;
+
+    const updateElapsed = () => {
+      const startedAt = new Date(callModal.call.startedAt).getTime();
+      setCallElapsedSeconds(
+        Number.isNaN(startedAt) ? 0 : Math.max(0, Math.floor((Date.now() - startedAt) / 1000)),
+      );
+    };
+
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [callModal?.call?.startedAt, callModal?.call?.status]);
 
   useEffect(() => {
     const fetchDataset = async () => {
@@ -1034,6 +1196,192 @@ const ClientDatasetDetail = () => {
     return response.data;
   };
 
+  const loadCallHistory = async (rowIndex) => {
+    const token = getAuthToken();
+    if (!token) throw new Error('Session expired. Please login again.');
+
+    const response = await axios.get(`${API_BASE_URL}/api/calls`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: {
+        datasetId,
+        rowIndex: getOriginalRowIndex(rowIndex),
+      },
+    });
+
+    setCallHistory(response.data.calls || []);
+    return response.data.calls || [];
+  };
+
+  const loadCallConfiguration = async () => {
+    const token = getAuthToken();
+    if (!token) return null;
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/calls/configuration`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setCallConfiguration(response.data);
+      return response.data;
+    } catch {
+      setCallConfiguration({
+        providerMode: 'device',
+        recordingEnabled: false,
+        missingConfiguration: [],
+      });
+      return null;
+    }
+  };
+
+  const launchDeviceDialer = (dialUrl) => {
+    if (dialUrl) window.location.href = dialUrl;
+  };
+
+  const loadCallRecording = async (call, rowIndex = null) => {
+    const token = getAuthToken();
+    if (!token || !call?._id) return;
+
+    const targetRowIndex = rowIndex ?? actionModal?.rowIndex ?? callModal?.rowIndex;
+    setLoadingRecordings((previous) => ({ ...previous, [call._id]: true }));
+    setCallError('');
+
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/calls/${call._id}/recording`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            datasetId,
+            rowIndex: getOriginalRowIndex(targetRowIndex),
+          },
+          responseType: 'blob',
+        },
+      );
+      const audioUrl = window.URL.createObjectURL(response.data);
+      setRecordingAudioUrls((previous) => ({ ...previous, [call._id]: audioUrl }));
+    } catch (requestError) {
+      setCallError(
+        requestError.response?.data?.message ||
+          'Recording is not available yet. Refresh the history after the call ends.',
+      );
+    } finally {
+      setLoadingRecordings((previous) => ({ ...previous, [call._id]: false }));
+    }
+  };
+
+  const startClientCall = async (rowIndex, phoneNumber, row) => {
+    const token = getAuthToken();
+    if (!token) {
+      setCallError('Session expired. Please login again.');
+      return;
+    }
+
+    const clientName =
+      getFirstCellValue(tableData.columns, row, [
+        'Account Name',
+        'Client Name',
+        'Company Name',
+        'Full Name',
+        'Contact Name',
+      ]) || `Client ${getOriginalRowIndex(rowIndex) + 1}`;
+
+    setCallError('');
+    setCallOutcome('');
+    setCallNotes('');
+    setCallHistory([]);
+    setIsStartingCall(true);
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/api/calls/start`,
+        {
+          datasetId,
+          rowIndex: getOriginalRowIndex(rowIndex),
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const call = response.data.call;
+      setCallElapsedSeconds(0);
+      setCallModal({
+        call,
+        rowIndex,
+        clientName: call.clientName || clientName,
+        phoneNumber: call.phoneNumber || phoneNumber,
+        dialUrl: response.data.dialUrl,
+        providerMode: response.data.providerMode || call.providerMode,
+        providerMessage: response.data.message,
+      });
+      setCallHistory([call]);
+      loadCallHistory(rowIndex).catch(() => {});
+      if (response.data.dialUrl) {
+        window.setTimeout(() => launchDeviceDialer(response.data.dialUrl), 50);
+      }
+    } catch (requestError) {
+      setCallError(
+        requestError.response?.data?.message || 'Unable to start this call from CRM.',
+      );
+    } finally {
+      setIsStartingCall(false);
+    }
+  };
+
+  const completeClientCall = async () => {
+    if (!callModal?.call?._id) return;
+    if (!callOutcome) {
+      setCallError('Select the call outcome before saving.');
+      return;
+    }
+
+    const token = getAuthToken();
+    if (!token) {
+      setCallError('Session expired. Please login again.');
+      return;
+    }
+
+    setCallError('');
+    setIsCompletingCall(true);
+
+    try {
+      const response = await axios.patch(
+        `${API_BASE_URL}/api/calls/${callModal.call._id}/complete`,
+        {
+          datasetId,
+          rowIndex: getOriginalRowIndex(callModal.rowIndex),
+          outcome: callOutcome,
+          notes: callNotes,
+          durationSeconds: callElapsedSeconds,
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      const savedCall = response.data.call;
+      setCallModal((previous) => ({ ...previous, call: savedCall, saved: true }));
+      setCallHistory((previous) => [
+        savedCall,
+        ...previous.filter((call) => String(call._id) !== String(savedCall._id)),
+      ]);
+    } catch (requestError) {
+      setCallError(requestError.response?.data?.message || 'Unable to save the call record.');
+    } finally {
+      setIsCompletingCall(false);
+    }
+  };
+
+  const closeCallModal = () => {
+    if (
+      callModal?.call?.status === 'Initiated' &&
+      !window.confirm('This call is not completed yet. Close without saving an outcome?')
+    ) {
+      return;
+    }
+
+    setCallModal(null);
+    setCallError('');
+    setCallOutcome('');
+    setCallNotes('');
+    setCallElapsedSeconds(0);
+  };
+
   const handleAssignRows = async () => {
     setAssignmentMessage('');
     setAssignmentError('');
@@ -1168,9 +1516,26 @@ const ClientDatasetDetail = () => {
     setSaveError('');
     setActionMessage('');
     setActionSaved(false);
+    setCallHistory([]);
+    setCallError('');
 
     setActionModal({
       rowIndex,
+
+      row,
+
+      clientName:
+        getFirstCellValue(tableData.columns, row, [
+          'Account Name',
+          'Client Name',
+          'Company Name',
+          'Full Name',
+          'Contact Name',
+        ]) || `Client ${getOriginalRowIndex(rowIndex) + 1}`,
+
+      phoneNumbers: getGroupedContactValues(row, phoneColumnIndexes),
+
+      selectedPhone: getGroupedContactValues(row, phoneColumnIndexes)[0] || '',
 
       status: row[statusIndex] || '',
 
@@ -1179,6 +1544,11 @@ const ClientDatasetDetail = () => {
       followUpDate:
         getFollowUpDate(rowIndex),
     });
+
+    loadCallHistory(rowIndex).catch(() => {
+      setCallError('Unable to load call history for this client.');
+    });
+    loadCallConfiguration();
   };
 
   const closeActionModal = () => {
@@ -1830,6 +2200,12 @@ const ClientDatasetDetail = () => {
           )}
         </div>
 
+        {callError && !callModal && (
+          <div className="border-b border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+            {callError}
+          </div>
+        )}
+
         <div className="client-table-scrollbar overflow-x-auto overscroll-x-contain border-t border-slate-200 bg-slate-50/70 pb-1">
           <table className="min-w-max border-collapse bg-white text-left text-xs">
             <thead>
@@ -2318,6 +2694,190 @@ const ClientDatasetDetail = () => {
         </div>
       </section>
 
+      {callModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-emerald-50/70 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                  <PhoneIcon />
+                </span>
+
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                    CRM outbound call
+                  </p>
+                  <h3 className="text-lg font-semibold text-slate-950">
+                    {callModal.clientName}
+                  </h3>
+                  <p className="text-sm font-medium text-slate-600">
+                    {callModal.phoneNumber}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeCallModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(92vh-80px)] overflow-y-auto p-5">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">
+                      {callModal.call.status === 'Initiated'
+                        ? 'Call in progress'
+                        : 'Call saved'}
+                    </p>
+                    <p className="mt-1 font-mono text-3xl font-bold text-emerald-700">
+                      {formatCallDuration(
+                        callModal.call.status === 'Initiated'
+                          ? callElapsedSeconds
+                          : callModal.call.durationSeconds,
+                      )}
+                    </p>
+                  </div>
+
+                  {callModal.dialUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => launchDeviceDialer(callModal.dialUrl)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700"
+                    >
+                      <PhoneIcon /> Open dialer again
+                    </button>
+                  ) : (
+                    <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700">
+                      Recorded cloud call
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-3 text-xs leading-5 text-emerald-800">
+                  {callModal.providerMode === 'cloud'
+                    ? callModal.providerMessage ||
+                      'Answer the call on your registered phone. Exotel will then connect the client and attach the recording to CRM history.'
+                    : 'This fallback uses the device phone app and saves only the call log, not audio. Configure Exotel for recorded CRM calls.'}
+                </p>
+              </div>
+
+              {callModal.call.status === 'Initiated' ? (
+                <div className="mt-5 space-y-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Call outcome *
+                    </span>
+                    <select
+                      value={callOutcome}
+                      onChange={(event) => {
+                        setCallOutcome(event.target.value);
+                        setCallError('');
+                      }}
+                      className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    >
+                      <option value="">Select outcome</option>
+                      {CALL_OUTCOMES.map((outcome) => (
+                        <option key={outcome} value={outcome}>
+                          {outcome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-bold text-slate-700">
+                      Call notes
+                    </span>
+                    <textarea
+                      rows="3"
+                      value={callNotes}
+                      onChange={(event) => setCallNotes(event.target.value)}
+                      placeholder="Requirement discussed, next action, client response..."
+                      className="w-full resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    />
+                  </label>
+
+                  {callError && (
+                    <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                      {callError}
+                    </p>
+                  )}
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={completeClientCall}
+                      disabled={isCompletingCall}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:bg-slate-300"
+                    >
+                      <CheckIcon />
+                      {isCompletingCall ? 'Saving call...' : 'Complete & save call'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+                  <p className="font-bold text-emerald-800">Call record saved successfully</p>
+                  <p className="mt-1 text-sm text-emerald-700">
+                    Outcome: {callModal.call.outcome || 'Completed'}
+                  </p>
+                </div>
+              )}
+
+              <section className="mt-6 border-t border-slate-200 pt-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-blue-600">
+                      Call history
+                    </p>
+                    <h4 className="mt-0.5 font-semibold text-slate-950">
+                      Previous CRM calls
+                    </h4>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => loadCallHistory(callModal.rowIndex)}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-50"
+                    >
+                      Refresh
+                    </button>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                      {callHistory.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {callHistory.map((call) => (
+                    <CallHistoryEntry
+                      key={call._id}
+                      call={call}
+                      recordingAudioUrl={recordingAudioUrls[call._id]}
+                      isRecordingLoading={loadingRecordings[call._id]}
+                      onLoadRecording={(selectedCall) =>
+                        loadCallRecording(selectedCall, callModal.rowIndex)
+                      }
+                    />
+                  ))}
+
+                  {!callHistory.length && (
+                    <p className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+                      No previous calls found.
+                    </p>
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+
       {actionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -2364,6 +2924,67 @@ const ClientDatasetDetail = () => {
             ) : (
               <div className="max-h-[calc(90vh-74px)] overflow-y-auto p-5">
                 <div className="space-y-5">
+                  <section className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                          Call client
+                        </p>
+                        <p className="mt-1 truncate text-sm font-bold text-slate-900">
+                          {actionModal.clientName}
+                        </p>
+
+                        {actionModal.phoneNumbers.length > 1 ? (
+                          <select
+                            value={actionModal.selectedPhone}
+                            onChange={(event) =>
+                              setActionModal((previous) => ({
+                                ...previous,
+                                selectedPhone: event.target.value,
+                              }))
+                            }
+                            className="mt-2 h-10 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-100"
+                          >
+                            {actionModal.phoneNumbers.map((phoneNumber) => (
+                              <option key={phoneNumber} value={phoneNumber}>
+                                {phoneNumber}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="mt-1 text-sm font-semibold text-slate-600">
+                            {actionModal.selectedPhone || 'No phone number available'}
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startClientCall(
+                            actionModal.rowIndex,
+                            actionModal.selectedPhone,
+                            actionModal.row,
+                          )
+                        }
+                        disabled={!actionModal.selectedPhone || isStartingCall}
+                        className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        <PhoneIcon /> {isStartingCall ? 'Starting...' : 'Call from CRM'}
+                      </button>
+                    </div>
+
+                    {callConfiguration?.recordingEnabled ? (
+                      <p className="mt-3 rounded-lg border border-emerald-200 bg-white/80 px-3 py-2 text-xs font-semibold text-emerald-700">
+                        Cloud recording is ON. Audio will appear in Client history after the call ends.
+                      </p>
+                    ) : (
+                      <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
+                        Audio recording is OFF. Configure CALL_PROVIDER=exotel and Exotel credentials in the backend .env; device-dialer calls only save call logs.
+                      </p>
+                    )}
+                  </section>
+
                   <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                     <label className="block">
                       <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-600">
@@ -2578,15 +3199,33 @@ const ClientDatasetDetail = () => {
                         </h4>
                       </div>
 
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                        {
-                          currentActionEntries.length
-                        }{' '}
-                        entries
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => loadCallHistory(actionModal.rowIndex)}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-50"
+                        >
+                          Refresh calls
+                        </button>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                          {currentActionEntries.length + callHistory.length} entries
+                        </span>
+                      </div>
                     </div>
 
                     <div className="mt-3 max-h-72 space-y-3 overflow-y-auto pr-1">
+                      {callHistory.map((call) => (
+                        <CallHistoryEntry
+                          key={`call-${call._id}`}
+                          call={call}
+                          recordingAudioUrl={recordingAudioUrls[call._id]}
+                          isRecordingLoading={loadingRecordings[call._id]}
+                          onLoadRecording={(selectedCall) =>
+                            loadCallRecording(selectedCall, actionModal.rowIndex)
+                          }
+                        />
+                      ))}
+
                       {currentActionEntries.map(
                         (entry, index) => (
                           <div
@@ -2663,18 +3302,22 @@ const ClientDatasetDetail = () => {
                         ),
                       )}
 
-                      {!currentActionEntries.length && (
+                      {!currentActionEntries.length && !callHistory.length && (
                         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
                           <p className="text-sm font-semibold text-slate-700">
                             No activity yet
                           </p>
 
                           <p className="mt-1 text-xs text-slate-500">
-                            Status and remark
-                            updates will appear
-                            here.
+                            Calls, status and remark updates will appear here.
                           </p>
                         </div>
+                      )}
+
+                      {callError && (
+                        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                          {callError}
+                        </p>
                       )}
                     </div>
                   </section>

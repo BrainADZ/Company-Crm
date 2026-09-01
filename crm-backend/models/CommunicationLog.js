@@ -17,8 +17,38 @@ const communicationLogSchema = new mongoose.Schema(
     message: { type: String, required: true, trim: true },
     status: {
       type: String,
-      enum: ['Draft', 'Sent', 'Failed'],
+      enum: ['Draft', 'Initiated', 'Completed', 'Sent', 'Failed'],
       default: 'Sent',
+    },
+    direction: {
+      type: String,
+      enum: ['Outbound', 'Inbound'],
+      default: 'Outbound',
+    },
+    phoneNumber: { type: String, default: '', trim: true },
+    callOutcome: {
+      type: String,
+      enum: [
+        '',
+        'Connected',
+        'No Answer',
+        'Busy',
+        'Switched Off',
+        'Wrong Number',
+        'Callback Requested',
+      ],
+      default: '',
+    },
+    startedAt: { type: Date, default: null },
+    endedAt: { type: Date, default: null },
+    durationSeconds: { type: Number, default: 0, min: 0 },
+    callProvider: { type: String, default: '', trim: true },
+    providerCallId: { type: String, default: '', trim: true, index: true },
+    recordingUrl: { type: String, default: '', trim: true },
+    recordingStatus: {
+      type: String,
+      enum: ['', 'Pending', 'Available', 'Failed'],
+      default: '',
     },
     owner: { type: String, default: 'Admin', trim: true },
     relatedDataset: { type: mongoose.Schema.Types.ObjectId, ref: 'ClientDataset', default: null },
@@ -31,5 +61,6 @@ const communicationLogSchema = new mongoose.Schema(
 );
 
 communicationLogSchema.index({ communityKey: 1, createdAt: -1 });
+communicationLogSchema.index({ relatedDataset: 1, rowIndex: 1, channel: 1, createdAt: -1 });
 
 module.exports = mongoose.model('CommunicationLog', communicationLogSchema);

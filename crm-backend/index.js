@@ -19,6 +19,7 @@ const permissionRoutes = require('./routes/permissions');
 const employeeDirectoryRoutes = require('./routes/employeeDirectory');
 const meetingRoutes = require('./routes/meetings');
 const quotationRoutes = require('./routes/quotations');
+const callRoutes = require('./routes/calls');
 const { startMeetingReminderScheduler } = require('./services/meetingReminderService');
 const path = require('path');
 
@@ -94,6 +95,7 @@ app.use('/api/permissions', permissionRoutes);
 app.use('/api/employee-directory', employeeDirectoryRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/quotations', quotationRoutes);
+app.use('/api/calls', callRoutes);
 
 // Socket.IO Setup
 const io = socketIo(server, {
