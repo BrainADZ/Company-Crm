@@ -1,17 +1,20 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from 'react-router-dom';
 import DashboardLayout from './components/DashboardLayout';
-import EmployeeLayout from './components/EmployeeLayout';
 import Clients from './pages/Clients';
 import ClientDatasetDetail from './pages/ClientDatasetDetail';
 import Employees from './pages/Employees';
 import Login from './pages/Login';
-import EmployeeDashboard from './pages/EmployeeDashboard';
-import EmployeeTasks from './pages/EmployeeTask';
-import EmployeeDatasets from './pages/EmployeeDatasets';
 import PrivateRoute from './components/PrivateRoute';
 import AccessRoute from './components/AccessRoute';
 import AdminTasks from './pages/AdminTasks';
 import AdminDashboardHome from './pages/AdminDashboardHome';
+import SalesDashboard from './pages/SalesDashboard';
 import WhatsAppDemo from './pages/WhatsAppDemo';
 import AccountSettings from './pages/AccountSettings';
 import CommunicationHub from './pages/CommunicationHub';
@@ -23,22 +26,25 @@ import PermissionsHub from './pages/PermissionsHub';
 import Meetings from './pages/Meetings';
 import Quotations from './pages/Quotations';
 import TeamWorkload from './pages/TeamWorkload';
-import { getAuthenticatedRole } from './utils/auth';
+import { getAuthenticatedRole, isSalesSession } from './utils/auth';
 
-const App = () => {
+const DashboardHome = () =>
+  isSalesSession() ? <SalesDashboard /> : <AdminDashboardHome />;
+
+const AppRoutes = () => {
+  // Re-render the auth gates after login/logout navigation. Reading the role in
+  // the outer App component left it frozen at the value from the first page load.
+  useLocation();
   const authenticatedRole = getAuthenticatedRole();
 
   return (
-    <Router>
-      <Routes>
+    <Routes>
         {/* Default route to handle login redirection */}
         <Route
           path="/"
           element={
-            authenticatedRole === 'admin' ? (
+            authenticatedRole === 'admin' || authenticatedRole === 'employee' ? (
               <Navigate to="/dashboard" replace />
-            ) : authenticatedRole === 'employee' ? (
-              <Navigate to="/employee-dashboard" replace />
             ) : (
               <Navigate to="/login" replace />
             )
@@ -48,10 +54,8 @@ const App = () => {
         <Route
           path="/login"
           element={
-            authenticatedRole === 'admin' ? (
+            authenticatedRole === 'admin' || authenticatedRole === 'employee' ? (
               <Navigate to="/dashboard" replace />
-            ) : authenticatedRole === 'employee' ? (
-              <Navigate to="/employee-dashboard" replace />
             ) : (
               <Login />
             )
@@ -59,11 +63,11 @@ const App = () => {
         />
         <Route path="/employee-login" element={<Navigate to="/login" replace />} />
 
-        {/* Admin Dashboard Routes */}
+        {/* Shared CRM dashboard. The sidebar and every route are permission-gated. */}
         <Route
           path="/dashboard"
           element={
-            <PrivateRoute role="admin">
+            <PrivateRoute roles={['admin', 'employee']}>
               <DashboardLayout />
             </PrivateRoute>
           }
@@ -72,7 +76,7 @@ const App = () => {
             index
             element={
               <AccessRoute moduleKey="dashboard">
-                <AdminDashboardHome />
+                <DashboardHome />
               </AccessRoute>
             }
           />
@@ -190,63 +194,26 @@ const App = () => {
               </AccessRoute>
             }
           />
-          <Route path="settings" element={<AccountSettings role="admin" />} />
+          <Route
+            path="settings"
+            element={<AccountSettings role={authenticatedRole === 'admin' ? 'admin' : 'employee'} />}
+          />
           <Route path="assign-clients" element={<Navigate to="/dashboard/tasks" replace />} />
         </Route>
 
-        {/* Employee Dashboard Routes */}
-        <Route
-          path="/employee-dashboard"
-          element={
-            <PrivateRoute role="employee">
-              <EmployeeLayout />
-            </PrivateRoute>
-          }
-        >
-          <Route index element={<EmployeeDashboard />} />
-          <Route path="tasks" element={<EmployeeTasks />} />
-          <Route path="datasets" element={<EmployeeDatasets />} />
-          <Route path="datasets/:datasetId" element={<ClientDatasetDetail />} />
-          <Route
-            path="sales"
-            element={
-              <AccessRoute moduleKey="sales">
-                <Clients />
-              </AccessRoute>
-            }
-          />
-          <Route
-            path="sales/:datasetId"
-            element={
-              <AccessRoute moduleKey="sales">
-                <ClientDatasetDetail />
-              </AccessRoute>
-            }
-          />
-          <Route
-            path="meetings"
-            element={
-              <AccessRoute moduleKey="meetings">
-                <Meetings />
-              </AccessRoute>
-            }
-          />
-          <Route
-            path="quotations"
-            element={
-              <AccessRoute moduleKey="quotations">
-                <Quotations />
-              </AccessRoute>
-            }
-          />
-          <Route path="settings" element={<AccountSettings role="employee" />} />
-        </Route>
+        {/* Legacy employee-only links now use the shared CRM dashboard. */}
+        <Route path="/employee-dashboard/*" element={<Navigate to="/dashboard" replace />} />
 
         {/* Catch-all Route for Undefined Paths */}
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+    </Routes>
   );
 };
+
+const App = () => (
+  <Router>
+    <AppRoutes />
+  </Router>
+);
 
 export default App;

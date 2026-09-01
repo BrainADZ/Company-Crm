@@ -1,6 +1,4 @@
 const PDFDocument = require('pdfkit');
-const fs = require('fs');
-const path = require('path');
 
 const BRAND = {
   marketing: { name: 'BrainADZ Marketing', color: '#1D4ED8', tagline: 'Ideas That Spark Momentum' },
@@ -22,124 +20,6 @@ const safe = (value, fallback = '-') => String(value || '').trim() || fallback;
 const logoBuffer = (dataUrl) => {
   const match = String(dataUrl || '').match(/^data:image\/(?:png|jpe?g);base64,(.+)$/i);
   return match ? Buffer.from(match[1], 'base64') : null;
-};
-
-const logoRoots = [
-  process.env.BRAND_LOGO_DIRECTORY,
-  path.join(__dirname, '..', 'public'),
-  path.join(__dirname, '..', '..', 'crm-dashboard', 'public'),
-].filter(Boolean);
-
-const rasterFiles = (directory, depth = 0) => {
-  if (!fs.existsSync(directory) || depth > 2) return [];
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return rasterFiles(entryPath, depth + 1);
-    return /\.(png|jpe?g)$/i.test(entry.name) ? [entryPath] : [];
-  });
-};
-
-const resolveBrandLogos = () => {
-  const files = logoRoots.flatMap((directory) => rasterFiles(directory));
-  const findLogo = (keywords) => files.find((file) => {
-    const normalized = path.basename(file).toLowerCase().replace(/[^a-z0-9]/g, '');
-    return normalized.includes('brainadz') && keywords.some((keyword) => normalized.includes(keyword));
-  }) || files.find((file) => {
-    const normalized = path.basename(file).toLowerCase().replace(/[^a-z0-9]/g, '');
-    return keywords.some((keyword) => normalized.includes(keyword));
-  });
-  const explicitLogo = (value, fallback) => (value && fs.existsSync(value) ? value : fallback);
-
-  return {
-    marketing: explicitLogo(process.env.MARKETING_LOGO_PATH, findLogo(['marketing'])),
-    live: explicitLogo(process.env.LIVE_LOGO_PATH, findLogo(['live'])),
-    exhibition: explicitLogo(process.env.EXHIBITS_LOGO_PATH, findLogo(['exhibit', 'exhibition', 'expo'])),
-  };
-};
-
-const drawClosingPage = (doc) => {
-  const logos = resolveBrandLogos();
-  const verticals = [
-    { key: 'marketing', name: 'BrainADZ Marketing', tagline: 'Ideas That Spark Momentum', accent: '#CA2B2D' },
-    { key: 'live', name: 'BrainADZ Live', tagline: 'From Vision to Visibility', accent: '#292743' },
-    { key: 'exhibition', name: 'BrainADZ Exhibits', tagline: 'Where Elegance Meets Execution', accent: '#CA2B2D' },
-  ];
-
-  doc.addPage();
-  doc.rect(0, 0, 595.28, 841.89).fill('#FFFFFF');
-  doc.rect(0, 0, 595.28, 8).fill('#292743');
-  doc.fillColor('#292743').font('Helvetica-Bold').fontSize(42).text('BrainADZ', 42, 50, { width: 511, align: 'center' });
-  doc.fillColor('#64748B').font('Helvetica').fontSize(9).text('ONE TEAM. THREE SPECIALIST VERTICALS.', 42, 105, {
-    width: 511,
-    align: 'center',
-    characterSpacing: 1.5,
-  });
-
-  verticals.forEach((vertical, index) => {
-    const x = 48 + (index * 170);
-    const logo = logos[vertical.key];
-    let logoDrawn = false;
-    if (logo) {
-      try {
-        doc.image(logo, x, 155, { fit: [150, 62], align: 'center', valign: 'center' });
-        logoDrawn = true;
-      } catch {
-        logoDrawn = false;
-      }
-    }
-    if (!logoDrawn) {
-      doc.fillColor('#292743').font('Helvetica-Bold').fontSize(15).text(vertical.name, x, 171, { width: 150, align: 'center' });
-    }
-    doc.fillColor('#64748B').font('Helvetica').fontSize(7.5).text(vertical.tagline, x, 224, { width: 150, align: 'center' });
-    doc.rect(x, 246, 150, 2).fill(vertical.accent);
-  });
-
-  doc.fillColor('#292743').font('Helvetica-Bold').fontSize(24).text('Thank you for the opportunity.', 70, 294, {
-    width: 455,
-    align: 'center',
-  });
-  doc.fillColor('#475569').font('Helvetica').fontSize(10.5).text(
-    'We appreciate the opportunity to understand your requirements and present this proposal. Our team is committed to combining clear strategy, thoughtful creativity and reliable execution to create measurable momentum for your brand.',
-    82,
-    334,
-    { width: 431, align: 'center', lineGap: 4 },
-  );
-
-  doc.roundedRect(55, 402, 485, 116, 8).fill('#F8FAFC').stroke('#E2E8F0');
-  doc.fillColor('#292743').font('Helvetica-Bold').fontSize(11).text('WHAT HAPPENS NEXT', 75, 422);
-  const nextSteps = [
-    ['01', 'Review', 'Review the scope, commercials and timelines shared in this quotation.'],
-    ['02', 'Confirm', 'Share your approval or questions so our specialists can align the final plan.'],
-    ['03', 'Begin', 'After confirmation, we schedule the kickoff and move into execution.'],
-  ];
-  nextSteps.forEach(([number, title, copy], index) => {
-    const x = 75 + (index * 153);
-    doc.circle(x + 10, 466, 10).fill('#292743');
-    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(7).text(number, x + 2, 463, { width: 16, align: 'center' });
-    doc.fillColor('#1E293B').font('Helvetica-Bold').fontSize(9).text(title, x + 26, 456, { width: 112 });
-    doc.fillColor('#64748B').font('Helvetica').fontSize(7.5).text(copy, x + 26, 471, { width: 112, lineGap: 2 });
-  });
-
-  const cards = [
-    ['PHONE', process.env.COMPANY_PHONE || '+91 95404 68023  |  +91 92890 92708'],
-    ['WEB & EMAIL', `${process.env.COMPANY_WEBSITE || 'www.brainadz.com'}\n${process.env.COMPANY_EMAIL || 'preeti@brainadz.com'}`],
-    ['HEAD OFFICE - NEW DELHI', process.env.COMPANY_HEAD_OFFICE || 'Apex Square 3, UGF, Plot 6, Pocket B-3, Sector 17, Dwarka, New Delhi 110075'],
-    ['BRANCH OFFICE - MUMBAI', process.env.COMPANY_BRANCH_OFFICE || '643/6th Floor, iMIMA Complex, Off Link Road, Mindspace, Malad West, Mumbai 400064'],
-  ];
-  cards.forEach(([title, copy], index) => {
-    const column = index % 2;
-    const row = Math.floor(index / 2);
-    const x = 55 + (column * 250);
-    const y = 550 + (row * 104);
-    doc.roundedRect(x, y, 235, 84, 7).fill('#FFFFFF').stroke('#E2E8F0');
-    doc.rect(x, y, 6, 84).fill(index === 1 ? '#292743' : '#CA2B2D');
-    doc.fillColor('#292743').font('Helvetica-Bold').fontSize(8).text(title, x + 20, y + 17, { width: 195 });
-    doc.fillColor('#475569').font('Helvetica').fontSize(8).text(copy, x + 20, y + 35, { width: 195, lineGap: 3 });
-  });
-  doc.fillColor('#94A3B8').font('Helvetica').fontSize(8).text('Strategy. Creativity. Technology. Experiences.', 42, 790, {
-    width: 511,
-    align: 'center',
-  });
 };
 
 const generateQuotationPdf = (quotation) =>
@@ -359,7 +239,6 @@ const generateQuotationPdf = (quotation) =>
       width: 203,
       align: 'right',
     });
-    if (quotation.communityKey === 'marketing') drawClosingPage(doc);
     doc.end();
   });
 

@@ -92,20 +92,20 @@ const EmployeeLayout = () => {
               : 'Dashboard';
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <aside className="fixed inset-y-0 left-0 z-50 flex w-20 flex-col bg-slate-950 text-white shadow-xl lg:w-64">
+    <div className="app-shell min-h-screen bg-[#f7f9fd] text-slate-900">
+      <aside className="app-sidebar fixed inset-y-0 left-0 z-50 flex w-20 flex-col border-r shadow-sm lg:w-64">
         <Link
           to="/employee-dashboard"
           className="flex h-16 items-center gap-3 border-b border-white/10 px-4 lg:px-5"
         >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white lg:hidden">
-            <img src="/icon.png" alt="BrainADZ" className="h-full w-full object-contain" />
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500">
+            <svg viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-white" strokeWidth="2">
+              <path d="M9 11 12 14 22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
           </span>
-          <span className="hidden min-w-0 lg:flex lg:flex-col lg:gap-0.5">
-            <span className="flex h-10 w-36 items-center rounded-lg bg-white px-2">
-              <img src="/logo.png" alt="BrainADZ" className="h-auto w-full object-contain" />
-            </span>
-            <span className="block text-[10px] text-slate-400">Employee workspace</span>
+          <span className="hidden lg:block">
+            <span className="block text-sm font-semibold">Company CRM</span>
+            <span className="mt-0.5 block text-xs text-slate-400">Employee workspace</span>
           </span>
         </Link>
         <nav className="flex-1 space-y-1 px-3 py-5">
